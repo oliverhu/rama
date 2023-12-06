@@ -13,7 +13,7 @@ wget https://huggingface.co/karpathy/tinyllamas/resolve/main/stories15M.bin
 cargo build --release
 cargo run --release -- -m stories15M.bin -t tokenizer.bin -p 'once upon a time'
 ```
-(Note release build is about 10x faster...for my M1 Mac, debug build gives ~35 tok/s,
+(Note release build is about 10x faster...for my Linux box, debug build gives ~35 tok/s,
 release build gives 370 tok/s)
 
 For llama2 model from Meta:
@@ -41,9 +41,13 @@ The little boy was very happy with his castle...
 
 ## Performance
 Model          | Platform       | Token/s
-:--------------|:---------------|:---------------
-stories15M.bin | M1 Macbook Pro | 402.35 tok/s
-llama2-7b.bin  | M1 Macbook Pro | 1.38 tok/s
+:--------------|:---------------|:------------
+stories15M.bin | Ryzen 7 5700X  | 402.35 tok/s
+llama2-7b.bin  | Ryzen 7 5700X  | 1.38 tok/s
+stories15M.bin | M1 Macbook Pro | 196.47 tok/s
+llama2-7b.bin  | M1 Macbook Pro | 0.02 tok/s
+
+Running llama2-7b f32 in M1 macbook is extremely slow since it requires 25GB memory but M1 only has 16GB total memory, the amount of swapping is huge.
 
 ## TODOs
 - [x] Support chat interface.
