@@ -1,0 +1,5 @@
+/target
+Cargo.lock
+llama2.c
+.DS_Store
+.vscode/
