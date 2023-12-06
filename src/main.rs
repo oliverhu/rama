@@ -3,12 +3,12 @@ use rayon::prelude::*;
 use core::f32;
 use std::collections::HashMap;
 use std::fs::File;
+use std::time::SystemTime;
 use std::io::{prelude::*, BufReader, Read, Result, stdout, stdin};
 use std::path::Path;
 use byteorder::ByteOrder;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -26,7 +26,7 @@ struct Args {
     prompt: String,
 
     /// Number of steps to run
-    #[arg(short, long, default_value_t = 1)]
+    #[arg(short, long, default_value_t = 255)]
     step: u8,
 
     /// (optional) The temperature [0, inf], default is 1.
@@ -59,14 +59,20 @@ fn main() {
     let transformer = &mut Transformer::from_file(path);
 
     let config = &transformer.config;
+    let step = args.step;
     let prompt = args.prompt;
     let temperature = args.temperature;
     let tokenizer = Tokenizer::new(token_path, config.vocab_size).unwrap();
     if args.mode == "generate" {
-        let _ = generate(transformer, &tokenizer, prompt, temperature, 255);
+        let start: SystemTime = SystemTime::now();
+        let _ = generate(transformer, &tokenizer, prompt, temperature, step.into());
+        let elapsed = start.elapsed().unwrap();
+        println!("\n--------------------------------");
+        println!("elapsed: {}.{:03} s, avg tok/s: {}",
+             elapsed.as_secs(), elapsed.subsec_millis(),
+             (step - 1) as f32 / elapsed.as_secs_f32());
     } else {
-        let _ = chat(transformer, &tokenizer, 255);
-
+        let _ = chat(transformer, &tokenizer, step.into());
     }
 }
 

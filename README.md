@@ -1,10 +1,8 @@
 # Rama
 
-Rama is a port of [llama.c](ttps://github.com/karpathy/llama2.c), some of the code referenced another port [here](https://github.com/leo-du/llama2.rs) from [leo-du](https://github.com/leo-du).
+Rama is a port of [llama.c](ttps://github.com/karpathy/llama2.c) in Rust, some of the code referenced another port [here](https://github.com/leo-du/llama2.rs) from [leo-du](https://github.com/leo-du).
 
-I created this repo to learn Rust from scratch (first piece of code in Rust after Rustling!), and get first hand experience understanding llama2 model architectures.
-
-The repo is also annotated with learning materials and documentations.
+This repo was created to learn Rust and understand llama2 model architectures by code - debugging is quite challenging tbh. The repo is also annotated with learning materials and documentations.
 
 Plan is to catch up with the performance of llama.cpp.
 
@@ -15,6 +13,8 @@ wget https://huggingface.co/karpathy/tinyllamas/resolve/main/stories15M.bin
 cargo build --release
 cargo run --release -- -m stories15M.bin -t tokenizer.bin -p 'once upon a time'
 ```
+(Note release build is about 10x faster...for my M1 Mac, debug build gives ~35 tok/s,
+release build gives 370 tok/s)
 
 For llama2 model from Meta:
 ```
@@ -40,6 +40,9 @@ The little boy was very happy with his castle...
 ```
 
 ## TODOs
-- [ ] Support chat interface.
+- [x] Support chat interface.
+- [x] Add tok/s.
 - [ ] Support GPU inference.
-- [ ] Add more comprehensive benchmark.
+- [ ] Support quantization.
+- [ ] Support flash attention.
+- [ ] Support AMD GPUs.
