@@ -3,7 +3,7 @@ use rayon::prelude::*;
 use core::f32;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{prelude::*, BufReader, Read, Result, stdout};
+use std::io::{prelude::*, BufReader, Read, Result, stdout, stdin};
 use std::path::Path;
 use byteorder::ByteOrder;
 use rand::{Rng, SeedableRng};
@@ -29,9 +29,17 @@ struct Args {
     #[arg(short, long, default_value_t = 1)]
     step: u8,
 
-    /// Path to the model checkpoint file
-    #[arg(short('r'), long, default_value_t = 0.9)]
+    /// (optional) The temperature [0, inf], default is 1.
+    #[arg(short('r'), long, default_value_t = 1.0)]
     temperature: f32,
+
+    /// (optional) p value in top-p sampling, default is 0.9.
+    #[arg(short('l'), long, default_value_t = 0.9)]
+    topp: f32,
+
+    /// (optional) Mode: generate or chat.
+    #[arg(short('o'), long, default_value = "generate")]
+    mode: String,
 }
 
 // Options:
@@ -54,10 +62,101 @@ fn main() {
     let prompt = args.prompt;
     let temperature = args.temperature;
     let tokenizer = Tokenizer::new(token_path, config.vocab_size).unwrap();
-    let _ = generate(transformer, &tokenizer, prompt, temperature, 255);
+    if args.mode == "generate" {
+        let _ = generate(transformer, &tokenizer, prompt, temperature, 255);
+    } else {
+        let _ = chat(transformer, &tokenizer, prompt, temperature, 255);
+
+    }
 }
 
-fn generate(mut transformer: &mut Transformer, tokenizer: &Tokenizer, prompt: String, temperature: f32, steps: usize) -> Result<()>{
+fn chat(mut transformer: &mut Transformer,
+    tokenizer: &Tokenizer,
+    prompt: String,
+    temperature: f32,
+    steps: usize) -> Result<()>
+{
+    let system_prompt = "";
+
+    let mut user_turn = true;
+    let mut next = 0;
+    let mut user_index = 0;
+    let mut token = 0;
+    let prev_token = 0;
+    let mut pos = 0;
+    let rng_seed = 100;
+    let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
+
+    let mut system_prompt = String::new();
+    let mut user_prompt = String::new();
+    let mut rendered_prompt = String::new();
+    let mut prompt_tokens = Vec::new();
+
+    while pos < steps {
+        if user_turn {
+            if pos == 0 {
+                // get optional system input.
+                print!("Enter system prompt (optional): ");
+                stdout().lock().flush()?;
+                stdin().read_line(&mut system_prompt)?;
+            }
+
+            print!("User: ");
+            stdout().lock().flush()?;
+            stdin().read_line(&mut user_prompt)?;
+
+            // Render user/system prompts into llama2 chat schema
+            if pos == 0 && system_prompt.len() > 0 {
+                rendered_prompt = format!("[INST] <<SYS>>{}<</SYS>>{} [/INST]", system_prompt, user_prompt);
+            } else {
+                rendered_prompt = format!("[INST] {} [/INST]", user_prompt);
+            }
+
+            prompt_tokens = tokenizer.encode(&rendered_prompt);
+            user_turn = false;
+            user_index = 0;
+
+            print!("\nAssistant: ");
+            stdout().lock().flush()?;
+        }
+
+        if user_index < prompt_tokens.len() {
+            token = prompt_tokens[user_index];
+            user_index += 1;
+        } else {
+            token = next;
+        }
+
+        if token == 2 { user_turn = true; }
+
+        forward(transformer, token, pos);
+        next = sample_top_q(&transformer.state.logits, transformer.config.vocab_size, 0.9, &mut rng);
+        pos += 1;
+
+        if user_index >= prompt_tokens.len() && next != 2 {
+            let mut token_str = tokenizer.vocab[next].clone();
+            if token_str == "<0x0A>" {
+                token_str = ".\n".to_string();
+            }
+            print!("{}", token_str);
+            stdout().flush()?;
+        }
+        if next == 2 {
+            println!("")
+        };
+
+
+    }
+
+    Ok(())
+
+}
+
+fn generate(mut transformer: &mut Transformer,
+    tokenizer: &Tokenizer,
+    prompt: String,
+    temperature: f32,
+    steps: usize) -> Result<()> {
     let prompt_tokens = if prompt.len() > 0 { tokenizer.encode(&prompt) } else { Vec::new() };
 
     let mut token = 1;
@@ -502,7 +601,8 @@ impl Tokenizer {
     fn encode(&self, s: &str) -> Vec<usize> {
         let mut tokens = Vec::new();
         tokens.reserve(s.len());
-        for c in s.chars() {
+        for c in s.trim().chars() {
+            if c == '\n' { continue; }
             let tid = self.word_token_map.get(&(c.to_string())).unwrap();
             tokens.push(*tid);
         }

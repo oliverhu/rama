@@ -3,3 +3,5 @@ Cargo.lock
 llama2.c
 .DS_Store
 .vscode/
+llama*bin
+__pycache__/
