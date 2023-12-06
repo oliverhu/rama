@@ -65,31 +65,26 @@ fn main() {
     if args.mode == "generate" {
         let _ = generate(transformer, &tokenizer, prompt, temperature, 255);
     } else {
-        let _ = chat(transformer, &tokenizer, prompt, temperature, 255);
+        let _ = chat(transformer, &tokenizer, 255);
 
     }
 }
 
-fn chat(mut transformer: &mut Transformer,
+fn chat(transformer: &mut Transformer,
     tokenizer: &Tokenizer,
-    prompt: String,
-    temperature: f32,
     steps: usize) -> Result<()>
 {
-    let system_prompt = "";
-
     let mut user_turn = true;
     let mut next = 0;
     let mut user_index = 0;
-    let mut token = 0;
-    let prev_token = 0;
+    let mut token;
     let mut pos = 0;
     let rng_seed = 100;
     let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
 
     let mut system_prompt = String::new();
     let mut user_prompt = String::new();
-    let mut rendered_prompt = String::new();
+    let mut rendered_prompt;
     let mut prompt_tokens = Vec::new();
 
     while pos < steps {
@@ -135,17 +130,13 @@ fn chat(mut transformer: &mut Transformer,
 
         if user_index >= prompt_tokens.len() && next != 2 {
             let mut token_str = tokenizer.vocab[next].clone();
-            if token_str == "<0x0A>" {
-                token_str = ".\n".to_string();
-            }
+            token_str = decode(token_str);
             print!("{}", token_str);
             stdout().flush()?;
         }
         if next == 2 {
             println!("")
         };
-
-
     }
 
     Ok(())
@@ -189,9 +180,7 @@ fn generate(mut transformer: &mut Transformer,
         }
 
         let mut token_str = tokenizer.vocab[next].clone();
-        if token_str == "<0x0A>" {
-            token_str = ".\n".to_string();
-        }
+        token_str = decode(token_str);
         print!("{}", token_str);
         stdout().flush()?;
 
@@ -654,6 +643,21 @@ impl Tokenizer {
 /// Utility functions
 ///
 
+fn decode(str: String) -> String {
+    let lower_case = str.to_ascii_lowercase();
+    let raw_bytes = lower_case.as_bytes();
+
+    // handle tokens in the form of "<0xAB>"
+    if str.len() > 0
+        && char::from(raw_bytes[0]) == '<'
+        && char::from(raw_bytes[raw_bytes.len() - 1]) == '>' {
+            let c = u8::from_str_radix(&str[3..5], 16).unwrap();
+            char::from(c).to_string()
+    } else {
+        str
+    }
+
+}
 
 trait FromBytes {
     fn from_bytes(bytes: [u8; 4]) -> Self;
