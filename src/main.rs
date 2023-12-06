@@ -17,7 +17,7 @@ struct Args {
     #[arg(short, long)]
     model: String,
 
-    /// Path to the model checkpoint file
+    /// Path to the model tokenizer file
     #[arg(short, long)]
     tokenizer: String,
 
@@ -91,7 +91,7 @@ fn generate(mut transformer: &mut Transformer, tokenizer: &Tokenizer, prompt: St
 
         let mut token_str = tokenizer.vocab[next].clone();
         if token_str == "<0x0A>" {
-            token_str = "\n".to_string();
+            token_str = ".\n".to_string();
         }
         print!("{}", token_str);
         stdout().flush()?;
