@@ -39,6 +39,12 @@ The little boy went to work. He built a castle out of the house. He put a moat a
 The little boy was very happy with his castle...
 ```
 
+## Performance
+Model          | Platform       | Token/s
+:--------------|:---------------|:---------------
+stories15M.bin | M1 Macbook Pro | 402.35 tok/s
+llama2-7b.bin  | M1 Macbook Pro | 1.38 tok/s
+
 ## TODOs
 - [x] Support chat interface.
 - [x] Add tok/s.

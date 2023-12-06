@@ -9,6 +9,5 @@ edition = "2021"
 clap = { version = "4.4", features = ["derive"] }
 rayon ={ version = "1.8" }
 rand ={ version = "*" }
-arr_macro = { version = "0.2" }
 byteorder = { version = "1.5" }
 rand_chacha ={ version = "*" }

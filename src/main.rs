@@ -364,10 +364,6 @@ fn forward(transformer: &mut Transformer, token: usize, pos: usize) {
         None => &weights.token_embedding_table,
     };
     matmul(&mut state.logits,  wcls,&state.x, dim);
-    print!("");
-    print!("");
-    print!("");
-
 }
 
 struct Config {
