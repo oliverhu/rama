@@ -18,8 +18,8 @@ cargo run --release -- -m stories15M.bin -t tokenizer.bin -p 'once upon a time'
 
 For llama2 model from Meta:
 ```
-pip install -r requirements.txt
-python export.py llama2_7b.bin --meta-llama path/to/llama/model/7B
+pip install -r export/requirements.txt
+python export/export.py llama2_7b.bin --meta-llama path/to/llama/model/7B
 cargo run --release -- -m llama2_7b.bin -t tokenizer.bin -p 'once upon a time'
 ```
 
