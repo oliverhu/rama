@@ -22,12 +22,12 @@ struct Args {
     tokenizer: String,
 
     /// Initial prompt string
-    #[arg(short, long)]
+    #[arg(short, long, default_value = "")]
     prompt: String,
 
     /// Number of steps to run
     #[arg(short, long, default_value_t = 255)]
-    step: u8,
+    step: u16,
 
     /// (optional) The temperature [0, inf], default is 1.
     #[arg(short('r'), long, default_value_t = 1.0)]
@@ -80,11 +80,11 @@ fn chat(transformer: &mut Transformer,
     tokenizer: &Tokenizer,
     steps: usize) -> Result<()>
 {
-    let mut user_turn = true;
+    let mut user_turn;
     let mut next = 0;
     let mut user_index = 0;
     let mut token;
-    let mut pos = 0;
+    let mut pos;
     let rng_seed = 100;
     let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
 
@@ -93,59 +93,63 @@ fn chat(transformer: &mut Transformer,
     let mut rendered_prompt;
     let mut prompt_tokens = Vec::new();
 
-    while pos < steps {
-        if user_turn {
-            if pos == 0 {
-                // get optional system input.
-                print!("Enter system prompt (optional): ");
+    print!("Enter system prompt (optional): ");
                 stdout().lock().flush()?;
                 stdin().read_line(&mut system_prompt)?;
+
+    loop {
+        pos = 0;
+        user_turn = true;
+        while pos < steps {
+            if user_turn {
+                print!("\nUser: ");
+                stdout().lock().flush()?;
+                stdin().read_line(&mut user_prompt)?;
+
+                if user_prompt.contains("EOS") {
+                    println!("Assistant: ending chat...");
+                    return Ok(());
+                }
+
+                // Render user/system prompts into llama2 chat schema
+                if pos == 0 && system_prompt.len() > 0 {
+                    rendered_prompt = format!("[INST] <<SYS>>{}<</SYS>>{} [/INST]", system_prompt, user_prompt);
+                } else {
+                    rendered_prompt = format!("[INST] {} [/INST]", user_prompt);
+                }
+
+                prompt_tokens = tokenizer.encode(&rendered_prompt);
+                user_turn = false;
+                user_index = 0;
+
+                print!("\nAssistant: ");
+                stdout().lock().flush()?;
             }
 
-            print!("User: ");
-            stdout().lock().flush()?;
-            stdin().read_line(&mut user_prompt)?;
-
-            // Render user/system prompts into llama2 chat schema
-            if pos == 0 && system_prompt.len() > 0 {
-                rendered_prompt = format!("[INST] <<SYS>>{}<</SYS>>{} [/INST]", system_prompt, user_prompt);
+            if user_index < prompt_tokens.len() {
+                token = prompt_tokens[user_index];
+                user_index += 1;
             } else {
-                rendered_prompt = format!("[INST] {} [/INST]", user_prompt);
+                token = next;
             }
 
-            prompt_tokens = tokenizer.encode(&rendered_prompt);
-            user_turn = false;
-            user_index = 0;
+            if token == 2 { user_turn = true; }
 
-            print!("\nAssistant: ");
-            stdout().lock().flush()?;
+            forward(transformer, token, pos);
+            next = sample_top_q(&transformer.state.logits, transformer.config.vocab_size, 0.9, &mut rng);
+            pos += 1;
+
+            if user_index >= prompt_tokens.len() && next != 2 {
+                let mut token_str = tokenizer.vocab[next].clone();
+                token_str = decode(token_str);
+                print!("{}", token_str);
+                stdout().flush()?;
+            }
+            if next == 2 {
+                println!("")
+            };
         }
-
-        if user_index < prompt_tokens.len() {
-            token = prompt_tokens[user_index];
-            user_index += 1;
-        } else {
-            token = next;
-        }
-
-        if token == 2 { user_turn = true; }
-
-        forward(transformer, token, pos);
-        next = sample_top_q(&transformer.state.logits, transformer.config.vocab_size, 0.9, &mut rng);
-        pos += 1;
-
-        if user_index >= prompt_tokens.len() && next != 2 {
-            let mut token_str = tokenizer.vocab[next].clone();
-            token_str = decode(token_str);
-            print!("{}", token_str);
-            stdout().flush()?;
-        }
-        if next == 2 {
-            println!("")
-        };
     }
-
-    Ok(())
 
 }
 
@@ -644,12 +648,12 @@ impl Tokenizer {
 ///
 /// Utility functions
 ///
-
 fn decode(str: String) -> String {
     let lower_case = str.to_ascii_lowercase();
     let raw_bytes = lower_case.as_bytes();
 
     // handle tokens in the form of "<0xAB>"
+    if str.contains("<s>") { return String::new(); }
     if str.len() > 0
         && char::from(raw_bytes[0]) == '<'
         && char::from(raw_bytes[raw_bytes.len() - 1]) == '>' {
