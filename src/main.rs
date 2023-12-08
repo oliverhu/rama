@@ -542,7 +542,9 @@ fn softmax(x: &mut [f32]) {
 // W (d,n) @ x (n,) -> xout (d,)
 fn matmul(o: &mut Vec<f32>, w: &[f32], x: &Vec<f32>, n: usize) {
     let le = o.len();
-    // let _ = device::cpu::CPU::matmul(o, w, &x, n, le, 1);
+    #[cfg(not(feature = "gpu"))]
+    let _ = device::cpu::CPU::matmul(o, w, &x, n, le, 1);
+    #[cfg(feature = "gpu")]
     let _ = device::gpu::GPU::matmul(o, w, &x, n, le, 1);
 }
 

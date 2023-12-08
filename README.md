@@ -23,6 +23,12 @@ python export/export.py llama2_7b.bin --meta-llama path/to/llama/model/7B
 cargo run --release -- -m llama2_7b.bin -t tokenizer.bin -p 'once upon a time'
 ```
 
+pass `--features gpu` to use GPU for matrix multiplications
+```
+cargo run --features gpu --release -- -m llama2_7b.bin -t tokenizer.bin -p 'once upon a time'
+```
+
+
 Sample output:
 ```
 ❯ cargo run --release -- -m llama2-7b.bin -t tokenizer.bin -p 'once upon a time' -r 0.5
