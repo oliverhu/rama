@@ -5,9 +5,15 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[build-dependencies]
+bindgen = "0.69"
+cc = "1.0.82"
+regex = "1.9.3"
+
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
 rayon ={ version = "1.8" }
 rand ={ version = "*" }
 byteorder = { version = "1.5" }
 rand_chacha ={ version = "*" }
+cudarc = { version = "*" }

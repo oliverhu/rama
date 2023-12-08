@@ -1,4 +1,5 @@
 use clap::Parser;
+use device::device::Device;
 use rayon::prelude::*;
 use core::f32;
 use std::collections::HashMap;
@@ -9,6 +10,7 @@ use std::path::Path;
 use byteorder::ByteOrder;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+mod device;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -52,7 +54,6 @@ struct Args {
 //   -V, --version                    Print version
 
 fn main() {
-
     let args = Args::parse();
     let path = &args.model;
     let token_path = &args.tokenizer;
@@ -540,13 +541,16 @@ fn softmax(x: &mut [f32]) {
 // Matrix Multiplication
 // W (d,n) @ x (n,) -> xout (d,)
 fn matmul(o: &mut Vec<f32>, w: &[f32], x: &Vec<f32>, n: usize) {
-    o.par_iter_mut().enumerate().for_each(|(idx, o)| {
-        let mut val = 0.0f32;
-        for j in 0..n {
-            val += w[idx * n + j] * x[j]
-        }
-        *o = val;
-    });
+    // o.par_iter_mut().enumerate().for_each(|(idx, o)| {
+    //     let mut val = 0.0f32;
+    //     for j in 0..n {
+    //         val += w[idx * n + j] * x[j]
+    //     }
+    //     *o = val;
+    // });
+    let le = o.len();
+    // let _ = device::cpu::CPU::matmul(o, w, &x, n, le, 1);
+    let _ = device::gpu::GPU::matmul(o, w, &x, n, le, 1);
 }
 
 ///
