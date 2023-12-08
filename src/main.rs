@@ -541,16 +541,9 @@ fn softmax(x: &mut [f32]) {
 // Matrix Multiplication
 // W (d,n) @ x (n,) -> xout (d,)
 fn matmul(o: &mut Vec<f32>, w: &[f32], x: &Vec<f32>, n: usize) {
-    // o.par_iter_mut().enumerate().for_each(|(idx, o)| {
-    //     let mut val = 0.0f32;
-    //     for j in 0..n {
-    //         val += w[idx * n + j] * x[j]
-    //     }
-    //     *o = val;
-    // });
     let le = o.len();
-    // let _ = device::cpu::CPU::matmul(o, w, &x, n, le, 1);
-    let _ = device::gpu::GPU::matmul(o, w, &x, n, le, 1);
+    let _ = device::cpu::CPU::matmul(o, w, &x, n, le, 1);
+    // let _ = device::gpu::GPU::matmul(o, w, &x, n, le, 1);
 }
 
 ///
