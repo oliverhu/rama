@@ -5,15 +5,6 @@ pub struct CPU {}
 impl Device for CPU {
     type Err = ();
     fn matmul(o: &mut [f32], a: &[f32], b: &[f32], width: usize, _o_rows: usize, o_cols: usize) -> Result<(), ()> {
-        // for r in 0..o_rows {
-        //     for c in 0..o_cols {
-        //         let mut v = 0.0;
-        //         for k in 0..width {
-        //             v += a[r * width + k] * b[k * o_cols + c];
-        //         }
-        //         o[r * o_cols + c] = v;
-        //     }
-        // }
 
         o.par_iter_mut().enumerate().for_each(
             |(idx, o)| {
@@ -48,6 +39,4 @@ mod tests {
 
     }
 
-    // fn test_softmax() {}
-    // fn test_rmsnorm() {}
 }

@@ -8,15 +8,14 @@ extern \"C\" __global__ void matmul(float* A, float* B, float* C, int width, int
     int ROW = blockIdx.y*blockDim.y+threadIdx.y;
     int COL = blockIdx.x*blockDim.x+threadIdx.x;
 
-    float tmpSum = 0;
-
     if (ROW < C_rows && COL < C_cols) {
+        float tmpSum = 0;
         // each thread computes one element of the block sub-matrix
         for (int i = 0; i < width; i++) {
             tmpSum += A[ROW * width + i] * B[i * C_cols + COL];
         }
+        C[ROW * C_cols + COL] = tmpSum;
     }
-    C[ROW * C_cols + COL] = tmpSum;
 }
 ";
 
@@ -39,32 +38,38 @@ extern \"C\" __global__ void matmul(float* A, float* B, float* C, int width, int
 ///     https://www.quantstart.com/articles/Matrix-Matrix-Multiplication-on-the-GPU-with-Nvidia-CUDA/
 ///
 
-// const ROW_TILE_WIDTH: usize = 32;
-// const COL_TILE_WIDTH: usize = 32;
+const ROW_TILE_WIDTH: usize = 32;
+const COL_TILE_WIDTH: usize = 32;
 
 pub struct GPU {}
 impl Device for GPU {
     type Err = DriverError;
     fn matmul(o: &mut [f32], a: &[f32], b: &[f32], width: usize, o_rows: usize, o_cols: usize) -> Result<(), DriverError> {
-        // let start = std::time::Instant::now();
+        let start = std::time::Instant::now();
         let ptx = compile_ptx(PTX_SRC).unwrap();
 
         let dev = CudaDevice::new(0)?;
 
         dev.load_ptx(ptx, "matmul", &["matmul"]).unwrap();
         let f = dev.get_func("matmul", "matmul").unwrap();
-        let w_dev = dev.htod_sync_copy(&a)?;
-        let x_dev = dev.htod_sync_copy(&b)?;
+        let a_dev = dev.htod_sync_copy(&a)?;
+        let b_dev: cudarc::driver::CudaSlice<f32> = dev.htod_sync_copy(&b)?;
         let mut o_dev = dev.htod_sync_copy(&o)?;
         // println!("Copied in {:?}", start.elapsed());
 
         let cfg = LaunchConfig {
-            block_dim: (o_cols as u32, o_rows as u32, 1),
-            grid_dim: (1, 1, 1),
+            block_dim: (COL_TILE_WIDTH as u32, ROW_TILE_WIDTH as u32, 1),
+            grid_dim: ((o_cols/COL_TILE_WIDTH + 1) as u32, (o_rows/ROW_TILE_WIDTH + 1) as u32, 1),
             shared_mem_bytes: 0,
         };
 
-        unsafe { f.launch(cfg, (&w_dev, &x_dev, &mut o_dev, width, o_rows, o_cols)) }?;
+        // let cfg = LaunchConfig {
+        //     block_dim: (o_cols as u32, o_rows as u32, 1),
+        //     grid_dim: (20, 20, 1),
+        //     shared_mem_bytes: 0,
+        // };
+
+        unsafe { f.launch(cfg, (&a_dev, &b_dev, &mut o_dev, width, o_rows, o_cols)) }?;
         dev.dtoh_sync_copy_into(&o_dev,  o)?;
         // println!("Found {:?} in {:?}", o, start.elapsed());
 
@@ -77,6 +82,9 @@ impl Device for GPU {
 mod tests {
     use super::*;
 
+    use rand::prelude::*;
+
+
     #[test]
     fn test_matrix_mul2() {
         let a_host = [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
@@ -85,12 +93,27 @@ mod tests {
         let _ = GPU::matmul(&mut c_host, &a_host, &b_host, 3, 2, 2);
 
         assert_eq!(c_host, [22.0, 28.0, 49.0, 64.0]);
-        print!("C1 IS {:?}", c_host);
 
+        let mut rng = thread_rng();
 
+        // Test size larger than 1024 threads
+        const SIZE: usize = 288*288;
+        let mut arr1 = [0.0f32; SIZE];
+        let mut arr2 = [0.0f32; SIZE];
+        let mut oo = [0.0f32; 288];
+        for i in 0..SIZE {
+            arr1[i] = rng.gen::<f32>();
+            arr2[i] = rng.gen::<f32>();
+        }
 
+        let e = GPU::matmul(&mut oo, &arr1, &arr2, 288, 288, 288);
+        match e {
+            Ok(_) => (),
+            Err(_) => panic!("error!"),
+        }
+
+        assert_ne!(oo[0], 0.0f32);
+        assert_ne!(oo[287], 0.0f32);
     }
 
-    // fn test_softmax() {}
-    // fn test_rmsnorm() {}
 }
