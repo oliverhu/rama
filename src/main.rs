@@ -1,5 +1,9 @@
 use clap::Parser;
+use cudarc::driver::DevicePtr;
+use cudarc::driver::result::memcpy_dtoh_sync;
+use cudarc::driver::sys::CUdeviceptr;
 use device::device::Device;
+use device::gpu::cuda::GPU;
 use rayon::prelude::*;
 use core::f32;
 use std::collections::HashMap;
@@ -167,8 +171,13 @@ fn generate(mut transformer: &mut Transformer,
     let rng_seed = 100;
     let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
 
+    let gpu = GPU::new();
+    let tg = &mut TransformerWeightsGPU::from_hw(&transformer.weights, &gpu);
+    let sg = &mut RunStateGPU::from_state(&transformer.state, &gpu);
+
     while pos < steps {
         forward(&mut transformer, token, pos);
+        // forward_gpu(transformer, tg, sg, &gpu, token, pos);
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
         } else {
@@ -239,26 +248,60 @@ fn sample_top_q(probabilities: &Vec<f32>, num: usize, topp: f32, rng: &mut ChaCh
 
 }
 
-// Naive sampling worked well for tinystories but performs really bad for llama model inference.
-// fn sample(probabilities: &Vec<f32>, rng: &mut ChaCha20Rng) -> usize {
-//     let r = rng.gen::<f32>();
-//     let mut cdf = 0.0;
-//     for (i, &p) in probabilities.iter().enumerate() {
-//         cdf += p;
-//         if r < cdf {
-//             return i;
-//         }
-//     }
-//     probabilities.len() - 1
-// }
 
 ///
 /// LLaMA architecture explained:
 /// https://www.youtube.com/watch?v=Mn_9W1nCFLo
 ///
-fn forward(transformer: &mut Transformer, token: usize, pos: usize) {
+///
+///
+fn forward_gpu(transformer: &mut Transformer, gpu_weights: &mut TransformerWeightsGPU,
+    gpu_state: &mut RunStateGPU, gpu: &GPU, token: usize, pos: usize) {
 
     let cfg = &transformer.config;
+    let dim = cfg.dim;
+    let hidden_dim = cfg.hidden_dim;
+    let head_size = dim / cfg.n_heads;
+
+
+    gpu.copy_from_slice(gpu_weights.token_embedding_table, gpu_state.x, (token * cfg.dim) as i32, ((token + 1) * cfg.dim) as i32);
+
+    for layer in 0..cfg.n_layers {
+
+
+    }
+
+
+
+    let mut buf2 = vec![0.0f32;cfg.dim];
+    unsafe { let _ = memcpy_dtoh_sync(& mut buf2, gpu_state.x); };
+    println!("ok");
+
+    println!("ok {:?}", buf2);
+
+    let sz = cfg.vocab_size * cfg.dim;
+    let mut buf3 = vec![0.0f32;sz];
+    unsafe { let _ = memcpy_dtoh_sync(& mut buf3, gpu_weights.token_embedding_table); };
+    println!("ok");
+
+
+}
+
+fn forward(transformer: &mut Transformer, token: usize, pos: usize) {
+
+    // let gpu = GPU::new();
+    // let tg = TransformerWeightsGPU::from_hw(&transformer.weights, &gpu);
+    // let sg = RunStateGPU::from_state(&transformer.state, &gpu);
+
+    let cfg = &transformer.config;
+
+    // let size = cfg.n_layers * cfg.dim * cfg.hidden_dim;
+    // let mut buf = vec![0.0f32;size];
+    // let mut buf2 = vec![0.0f32;cfg.dim];
+    // unsafe { let _ = memcpy_dtoh_sync(& mut buf, tg.w1); };
+    // unsafe { let _ = memcpy_dtoh_sync(& mut buf2, sg.q); };
+
+
     let weights: &TransformerWeights = &transformer.weights;
     let state = &mut transformer.state;
     let dim = cfg.dim;
@@ -431,6 +474,85 @@ struct TransformerWeights {
     wcls: Option<Vec<f32>>,
 }
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+struct TransformerWeightsGPU {
+    token_embedding_table: CUdeviceptr,
+    rms_att_weight: CUdeviceptr,
+    rms_ffn_weight: CUdeviceptr,
+
+    wq: CUdeviceptr,
+    wk: CUdeviceptr,
+    wv: CUdeviceptr,
+    wo: CUdeviceptr,
+    w1: CUdeviceptr,
+    w2: CUdeviceptr,
+    w3: CUdeviceptr,
+
+    rms_final_weight: CUdeviceptr,
+    freq_cis_real: CUdeviceptr,
+    freq_cis_imag: CUdeviceptr,
+    wcls_exists: bool,
+    wcls: CUdeviceptr,
+}
+
+// Allocate data in GPU memory and return a pointer to the location. Leak this object since the
+// lifecycle of the GPU object is the same as the local CudaSlice object.
+fn allocate(gpu: &GPU, data: &Vec<f32>) -> CUdeviceptr {
+    let cs = gpu.gpu.htod_sync_copy(&data).unwrap();
+    let ptr = *cs.device_ptr();
+    std::mem::forget(cs);
+    ptr
+}
+
+impl TransformerWeightsGPU {
+    fn from_hw(tw: &TransformerWeights, device: &GPU) -> Self {
+        let token_embedding_table = allocate(device, &tw.token_embedding_table);
+        let rms_att_weight = allocate(device, &tw.rms_att_weight);
+        let rms_ffn_weight = allocate(device, &tw.rms_ffn_weight);
+        let wq = allocate(device, &tw.wq);
+        let wk = allocate(device, &tw.wk);
+        let wv = allocate(device, &tw.wv);
+        let wo = allocate(device, &tw.wo);
+        let w1 = allocate(device, &tw.w1);
+        let w2 = allocate(device, &tw.w2);
+        let w3 = allocate(device, &tw.w3);
+        let rms_final_weight = allocate(device, &tw.rms_final_weight);
+        let freq_cis_real = allocate(device, &tw.freq_cis_real);
+        let freq_cis_imag = allocate(device, &tw.freq_cis_imag);
+        let mut wcls: CUdeviceptr = 0;
+        let mut wcls_exists= false;
+
+        match &tw.wcls {
+            Some(val) =>
+            {
+                wcls = allocate(device, &val);
+                wcls_exists = true;
+            }
+            None => (),
+        }
+
+        Self {
+            token_embedding_table: token_embedding_table,
+            rms_att_weight: rms_att_weight,
+            rms_ffn_weight: rms_ffn_weight,
+            wq: wq,
+            wk: wk,
+            wv: wv,
+            wo: wo,
+            w1: w1,
+            w2: w2,
+            w3: w3,
+            rms_final_weight: rms_final_weight,
+            freq_cis_real: freq_cis_real,
+            freq_cis_imag: freq_cis_imag,
+            wcls_exists,
+            wcls,
+        }
+
+    }
+}
+
 impl TransformerWeights {
     fn from_file(f: &mut BufReader<File>, c: &Config) -> Self {
         let head_size = c.dim / c.n_heads;
@@ -454,8 +576,8 @@ impl TransformerWeights {
                 }
             },
         }
-
     }
+
 }
 
 struct RunState {
@@ -494,6 +616,40 @@ impl RunState {
 
 }
 
+struct RunStateGPU {
+    x: CUdeviceptr,
+    xb: CUdeviceptr,
+    xb2: CUdeviceptr,
+    hb: CUdeviceptr,
+    hb2: CUdeviceptr,
+    q: CUdeviceptr,
+    k: CUdeviceptr,
+    v: CUdeviceptr,
+    att: CUdeviceptr,
+    logits: CUdeviceptr,
+    key_cache: CUdeviceptr,
+    value_cache: CUdeviceptr,
+}
+
+impl  RunStateGPU {
+    fn from_state(state: &RunState, device: &GPU) -> Self {
+        Self {
+            x: allocate(device, &state.x),
+            xb: allocate(device, &state.xb),
+            xb2: allocate(device, &state.xb2),
+            hb: allocate(device, &state.hb),
+            hb2: allocate(device, &state.hb2),
+            q: allocate(device, &state.q),
+            k: allocate(device, &state.k),
+            v: allocate(device, &state.v),
+            att: allocate(device, &state.att),
+            logits: allocate(device, &state.logits),
+            key_cache: allocate(device, &state.key_cache),
+            value_cache: allocate(device, &state.value_cache),
+        }
+    }
+
+}
 struct Transformer {
     config: Config,
     weights: TransformerWeights,
@@ -545,7 +701,7 @@ fn matmul(o: &mut Vec<f32>, w: &[f32], x: &Vec<f32>, n: usize) {
     #[cfg(not(feature = "gpu"))]
     let _ = device::cpu::CPU::matmul(o, w, &x, n, le, 1);
     #[cfg(feature = "gpu")]
-    let _ = device::gpu::details::GPU::matmul(o, w, &x, n, le, 1);
+    let _ = device::gpu::cuda::GPU::matmul(o, w, &x, n, le, 1);
 }
 
 ///
@@ -730,3 +886,17 @@ mod tests {
     // fn test_softmax() {}
     // fn test_rmsnorm() {}
 }
+
+
+// Naive sampling worked well for tinystories but performs really bad for llama model inference.
+// fn sample(probabilities: &Vec<f32>, rng: &mut ChaCha20Rng) -> usize {
+//     let r = rng.gen::<f32>();
+//     let mut cdf = 0.0;
+//     for (i, &p) in probabilities.iter().enumerate() {
+//         cdf += p;
+//         if r < cdf {
+//             return i;
+//         }
+//     }
+//     probabilities.len() - 1
+// }

@@ -1,6 +1,10 @@
 #[cfg(feature = "gpu")]
-pub mod details {
-    use cudarc::driver::{CudaDevice, DriverError, LaunchAsync, LaunchConfig};
+pub mod cuda {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use cudarc::driver::sys::CUdeviceptr;
+    use cudarc::driver::{CudaDevice, DriverError, LaunchAsync, LaunchConfig, CudaFunction};
     use cudarc::nvrtc::compile_ptx;
 
     use super::super::device::*;
@@ -18,6 +22,26 @@ extern \"C\" __global__ void matmul(float* A, float* B, float* C, int width, int
         }
         C[ROW * C_cols + COL] = tmpSum;
     }
+}
+
+extern \"C\" __global__ void copy_from_slice(float *src, float *dest, int start, int end) {
+    int i = blockIdx.x*blockDim.x+threadIdx.x;
+    if (i < end - start) {
+        dest[i] = src[start + i];
+    }
+}
+
+extern \"C\" __global__ void rmsnorm(float *output, float *input, float *weight, int N) {
+    int i = blockIdx.x*blockDim.x+threadIdx.x;
+    if (i < N) {
+        int sum = 0;
+        for (int d = 0; d < N; d++) {
+            sum += input[d] * input[d];
+        }
+        int v = sqrt(1.0 / (sum / N) + 0.00001);
+        output[i] = weight[i] * (v * input[i]);
+    }
+
 }
 ";
 
@@ -43,11 +67,50 @@ extern \"C\" __global__ void matmul(float* A, float* B, float* C, int width, int
     const ROW_TILE_WIDTH: usize = 32;
     const COL_TILE_WIDTH: usize = 32;
 
-    pub struct GPU {}
+    pub struct GPU {
+        // Reference to the GPU device.
+        pub gpu: Arc<CudaDevice>,
+        // A map from string to a loaded function in the device.
+        pub cuda_funs: HashMap<String, CudaFunction>,
+    }
+
+
+    ///
+    /// Expected APIs:
+    /// let g = GPU::new();
+    /// g.copy_weights(); // copy transformer weights & state weights into GPU memory.
+    /// g.matmul(o, a, b);
+    /// let host_o = mut [X; Y];
+    /// g.copy_to_host(o, host_o);
+    ///
+    impl GPU {
+        pub fn new() -> Self {
+            let dev = CudaDevice::new(0).unwrap();
+            let ptx = compile_ptx(PTX_SRC).unwrap();
+            dev.load_ptx(ptx, "module", &["matmul", "copy_from_slice", "rmsnorm"]).unwrap();
+            // let f: CudaFunction = dev.get_func("matmul", "matmul").unwrap();
+            let cf = HashMap::new();
+            // cf.insert("matmul".to_string(), f);
+            Self {
+                gpu: dev,
+                cuda_funs: cf,
+            }
+        }
+        pub fn copy_from_slice(&self, src: CUdeviceptr, dest: CUdeviceptr, start: i32, end: i32) {
+            let f = self.gpu.get_func("module", "copy_from_slice").unwrap();
+            println!(" COPY_FROM_SLICE: {}, {}", start, end);
+            // assert!(start == 288);
+            unsafe { f.launch(LaunchConfig::for_num_elems((end - start) as u32), (src, dest, start, end,)) }.unwrap();
+        }
+
+        pub fn rmsnorm(&self, o: CUdeviceptr, x: CUdeviceptr, w: CUdeviceptr) {
+
+        }
+    }
+
     impl Device for GPU {
         type Err = DriverError;
         fn matmul(o: &mut [f32], a: &[f32], b: &[f32], width: usize, o_rows: usize, o_cols: usize) -> Result<(), DriverError> {
-            let start = std::time::Instant::now();
             let ptx = compile_ptx(PTX_SRC).unwrap();
 
             let dev = CudaDevice::new(0)?;
@@ -82,8 +145,10 @@ extern \"C\" __global__ void matmul(float* A, float* B, float* C, int width, int
 
     #[cfg(test)]
     mod tests {
+
         use super::*;
 
+        use cudarc::driver::{sys::CUdeviceptr, CudaSlice, DevicePtr, DeviceRepr};
         use rand::prelude::*;
 
 
