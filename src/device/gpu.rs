@@ -3,6 +3,7 @@ pub mod cuda {
     use std::collections::HashMap;
     use std::sync::Arc;
 
+    use cudarc::driver::result::memcpy_dtoh_sync;
     use cudarc::driver::sys::CUdeviceptr;
     use cudarc::driver::{CudaDevice, DriverError, LaunchAsync, LaunchConfig, CudaFunction};
     use cudarc::nvrtc::compile_ptx;
@@ -31,16 +32,34 @@ extern \"C\" __global__ void copy_from_slice(float *src, float *dest, int start,
     }
 }
 
-extern \"C\" __global__ void rmsnorm(float *output, float *input, float *weight, int N) {
+extern \"C\" __global__ void rmsnorm(float *output, float *input, float *weight, int start, int N) {
     int i = blockIdx.x*blockDim.x+threadIdx.x;
     if (i < N) {
-        int sum = 0;
+        float sum = 0;
         for (int d = 0; d < N; d++) {
-            sum += input[d] * input[d];
+            sum += powf(input[d], 2);// input[d] * input[d];
         }
-        int v = sqrt(1.0 / (sum / N) + 0.00001);
-        output[i] = weight[i] * (v * input[i]);
+        int v = 1.0 / sqrt((sum / N) + 0.00001);
+        output[i] = weight[start + i] * (v * input[i]);
+        // output[i] = sum; //input[i];// weight[start + i];
     }
+
+}
+
+extern \"C\" __global__ void apply_position(float *q, float *k, float *pos_real, float *pos_img, int n_heads, int head_size) {
+    int i = blockIdx.x*blockDim.x+threadIdx.x;
+    if (i < head_size / 2) {
+        int fcr = pos_real[i];
+        int fci = pos_img[i];
+        q[i * 2] = q[i * 2] * fcr - q[i * 2 + 1] * fci;
+        q[i * 2 + 1] = q[i * 2] * fcr + q[i * 2 + 1] * fcr;
+        k[i * 2] = k[i * 2] * fcr - k[i * 2 + 1] * fci;
+        k[i * 2 + 1] = k[i * 2] * fcr + k[i * 2 + 1] * fcr;
+    }
+}
+
+extern \"C\" __global__ void multi_head_attention(float *att, float *q, float *xb, int att_size) {
+    int i = blockIdx.x*blockDim.x+threadIdx.x;
 
 }
 ";
@@ -87,7 +106,7 @@ extern \"C\" __global__ void rmsnorm(float *output, float *input, float *weight,
         pub fn new() -> Self {
             let dev = CudaDevice::new(0).unwrap();
             let ptx = compile_ptx(PTX_SRC).unwrap();
-            dev.load_ptx(ptx, "module", &["matmul", "copy_from_slice", "rmsnorm"]).unwrap();
+            dev.load_ptx(ptx, "module", &["matmul", "copy_from_slice", "rmsnorm", "apply_position"]).unwrap();
             // let f: CudaFunction = dev.get_func("matmul", "matmul").unwrap();
             let cf = HashMap::new();
             // cf.insert("matmul".to_string(), f);
@@ -98,13 +117,33 @@ extern \"C\" __global__ void rmsnorm(float *output, float *input, float *weight,
         }
         pub fn copy_from_slice(&self, src: CUdeviceptr, dest: CUdeviceptr, start: i32, end: i32) {
             let f = self.gpu.get_func("module", "copy_from_slice").unwrap();
-            println!(" COPY_FROM_SLICE: {}, {}", start, end);
-            // assert!(start == 288);
             unsafe { f.launch(LaunchConfig::for_num_elems((end - start) as u32), (src, dest, start, end,)) }.unwrap();
         }
 
-        pub fn rmsnorm(&self, o: CUdeviceptr, x: CUdeviceptr, w: CUdeviceptr) {
+        pub fn rmsnorm(&self, o: CUdeviceptr, x: CUdeviceptr, w: CUdeviceptr, start: i32, n: i32) {
+            let f = self.gpu.get_func("module", "rmsnorm").unwrap();
+            unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (o, x, w, start, n,)) }.unwrap();
+        }
 
+        pub fn matmul2(&self, o: CUdeviceptr, a: CUdeviceptr, b: CUdeviceptr, width: usize, o_rows: i32, o_cols: i32) {
+            let f = self.gpu.get_func("module", "matmul").unwrap();
+            let cfg = LaunchConfig {
+                block_dim: (COL_TILE_WIDTH as u32, ROW_TILE_WIDTH as u32, 1),
+                grid_dim: ((o_cols/COL_TILE_WIDTH as i32 + 1) as u32, (o_rows/ROW_TILE_WIDTH as i32 + 1) as u32, 1),
+                shared_mem_bytes: 0,
+            };
+            unsafe { f.launch(cfg, (a, b, o, width, o_rows, o_cols)) }.unwrap();
+        }
+
+        pub fn apply_position(&self, q: CUdeviceptr, k: CUdeviceptr, pos_real: CUdeviceptr, pos_img: CUdeviceptr, n_heads: i32, head_size: i32) {
+            let f = self.gpu.get_func("module", "apply_position").unwrap();
+            unsafe { f.launch(LaunchConfig::for_num_elems((head_size / 2 + 1) as u32), (q, k, pos_real, pos_img, n_heads, head_size)) }.unwrap();
+        }
+        ///
+        /// o_buf: the buffer to write the GPU ram into
+        pub fn debug(&self, o_buf: &mut Vec<f32>, input: CUdeviceptr) {
+            unsafe { let _ = memcpy_dtoh_sync(o_buf, input); };
+            println!("--------------------\noutput_buf is: {:?}\n", o_buf)
         }
     }
 

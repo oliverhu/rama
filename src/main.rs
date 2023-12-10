@@ -6,6 +6,7 @@ use device::device::Device;
 use device::gpu::cuda::GPU;
 use rayon::prelude::*;
 use core::f32;
+use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::fs::File;
 use std::time::SystemTime;
@@ -17,7 +18,7 @@ use rand_chacha::ChaCha20Rng;
 mod device;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(long_about = None)]
 struct Args {
     /// Path to the model checkpoint file
     #[arg(short, long)]
@@ -176,8 +177,8 @@ fn generate(mut transformer: &mut Transformer,
     let sg = &mut RunStateGPU::from_state(&transformer.state, &gpu);
 
     while pos < steps {
-        forward(&mut transformer, token, pos);
-        // forward_gpu(transformer, tg, sg, &gpu, token, pos);
+        // forward(&mut transformer, token, pos);
+        forward_gpu(transformer, tg, sg, &gpu, token, pos);
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
         } else {
@@ -267,11 +268,35 @@ fn forward_gpu(transformer: &mut Transformer, gpu_weights: &mut TransformerWeigh
     gpu.copy_from_slice(gpu_weights.token_embedding_table, gpu_state.x, (token * cfg.dim) as i32, ((token + 1) * cfg.dim) as i32);
 
     for layer in 0..cfg.n_layers {
+        let _ = &gpu.rmsnorm(gpu_state.xb, gpu_state.x, gpu_weights.rms_att_weight + (layer * dim) as u64, 0, dim as i32);
+        let _ = &gpu.matmul2(gpu_state.q, gpu_weights.wq + (layer * dim * dim) as u64, gpu_state.xb, dim, dim as i32, 1);
+        let _ = &gpu.matmul2(gpu_state.k, gpu_weights.wk + (layer * dim * dim) as u64, gpu_state.xb, dim, dim as i32, 1);
+        let _ = &gpu.matmul2(gpu_state.v, gpu_weights.wv + (layer * dim * dim) as u64, gpu_state.xb, dim, dim as i32, 1);
+
+        for h in 0..cfg.n_heads {
+
+            let q = gpu_state.q + (h * head_size) as u64;
+            let k = gpu_state.k + (h * head_size) as u64;
+            let _ = &gpu.apply_position(q, k, gpu_weights.freq_cis_real, gpu_weights.freq_cis_imag, cfg.n_heads as i32, head_size as i32);
+
+        }
+
+
+
+
+
+        // gpu.rmsnorm(gpu_state.xb, gpu_state.x, gpu_weights.rms_att_weight, (layer * dim) as i32, dim as i32);
+        let mut buf1 = vec![0.0f32;cfg.dim];
+        let mut buf2 = vec![0.0f32;cfg.dim];
+        let mut buf3 = vec![0.0f32;cfg.dim];
+        gpu.debug(&mut buf1, gpu_state.q);
+        gpu.debug(&mut buf2, gpu_state.k);
+        gpu.debug(&mut buf3, gpu_state.v);
+        // unsafe { let _ = memcpy_dtoh_sync(& mut buf2, gpu_state.xb); };
+        println!("ok");
 
 
     }
-
-
 
     let mut buf2 = vec![0.0f32;cfg.dim];
     unsafe { let _ = memcpy_dtoh_sync(& mut buf2, gpu_state.x); };
@@ -681,7 +706,10 @@ impl Transformer {
 
 // RMSNORM
 fn rmsnorm(o: &mut Vec<f32>, x: &Vec<f32>, weight: &[f32]) {
-    let v: f32 = 1.0f32 / (x.iter().map(|x| x * x ).sum::<f32>() / x.len() as f32 + 1e-5f32).sqrt();
+    let v: f32 =
+    1.0f32 /
+    (x.iter().map(|x| x * x ).sum::<f32>() / x.len() as f32 + 1e-5f32)
+    .sqrt();
     for i in 0..o.len() {
         o[i] = weight[i] * (v * x[i]);
     }
