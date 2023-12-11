@@ -545,7 +545,7 @@ fn matmul(o: &mut Vec<f32>, w: &[f32], x: &Vec<f32>, n: usize) {
     #[cfg(not(feature = "gpu"))]
     let _ = device::cpu::CPU::matmul(o, w, &x, n, le, 1);
     #[cfg(feature = "gpu")]
-    let _ = device::gpu::details::GPU::matmul(o, w, &x, n, le, 1);
+    let _ = device::gpu::GPU::matmul(o, w, &x, n, le, 1);
 }
 
 ///
