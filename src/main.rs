@@ -6,6 +6,7 @@ use device::device::Device;
 use device::gpu::cuda::GPU;
 use rayon::prelude::*;
 use core::f32;
+use std::arch::x86_64;
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::fs::File;
@@ -173,29 +174,33 @@ fn generate(mut transformer: &mut Transformer,
     let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
 
     let gpu = GPU::new();
-    let tg = &mut TransformerWeightsGPU::from_hw(&transformer.weights, &gpu);
-    let sg = &mut RunStateGPU::from_state(&transformer.state, &gpu);
+    let mut tg = TransformerWeightsGPU::from_hw(&transformer.weights, &gpu);
+    let mut sg = RunStateGPU::from_state(&transformer.state, &gpu);
 
     while pos < steps {
         // forward(&mut transformer, token, pos);
-        forward_gpu(transformer, tg, sg, &gpu, token, pos);
+        forward_gpu(transformer, &mut tg, &mut sg, &gpu, token, pos);
+        let mut logits = [0.0f32; 32000];
+        unsafe { let _ = memcpy_dtoh_sync(&mut logits, sg.logits); };
+
+
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
         } else {
             if temperature == 0.0 {
                 // greedy decoding, choose argmax
-                next = transformer.state.logits.iter().enumerate()
+                next = logits.iter().enumerate()
                     .reduce(|(i1, v1), (i2, v2)| if v1 > v2 { (i1, v1) } else { (i2, v2) })
                     .map(|(i, _)| i).unwrap();
             } else {
                 // temperature scaling
                 if temperature < 1.0 {
-                    transformer.state.logits.iter_mut().for_each(|z| *z /= temperature);
+                    logits.iter_mut().for_each(|z| *z /= temperature);
                 }
                 // compute probabilities
-                softmax(&mut transformer.state.logits);
+                softmax(&mut logits);
                 // next = sample(&transformer.state.logits, &mut rng);
-                next = sample_top_q(&transformer.state.logits, transformer.config.vocab_size, 0.9, &mut rng);
+                next = sample_top_q(&logits.into(), transformer.config.vocab_size, 0.9, &mut rng);
 
             }
         }
@@ -250,6 +255,7 @@ fn sample_top_q(probabilities: &Vec<f32>, num: usize, topp: f32, rng: &mut ChaCh
 }
 
 
+const FLOAT_SIZE: usize = 4;
 ///
 /// LLaMA architecture explained:
 /// https://www.youtube.com/watch?v=Mn_9W1nCFLo
@@ -265,49 +271,185 @@ fn forward_gpu(transformer: &mut Transformer, gpu_weights: &mut TransformerWeigh
     let head_size = dim / cfg.n_heads;
 
 
-    gpu.copy_from_slice(gpu_weights.token_embedding_table, gpu_state.x, (token * cfg.dim) as i32, ((token + 1) * cfg.dim) as i32);
+    let mut buf1 = vec![0.0f32;9216000];
+    gpu.debug(&mut buf1, gpu_weights.token_embedding_table);
+    // print!("hello");
+
+
+
+    gpu.copy_from_slice(gpu_weights.token_embedding_table + (token * dim * FLOAT_SIZE) as u64, gpu_state.x, dim as i32);
+
+    // print!("hello");
 
     for layer in 0..cfg.n_layers {
-        let _ = &gpu.rmsnorm(gpu_state.xb, gpu_state.x, gpu_weights.rms_att_weight + (layer * dim) as u64, 0, dim as i32);
-        let _ = &gpu.matmul2(gpu_state.q, gpu_weights.wq + (layer * dim * dim) as u64, gpu_state.xb, dim, dim as i32, 1);
-        let _ = &gpu.matmul2(gpu_state.k, gpu_weights.wk + (layer * dim * dim) as u64, gpu_state.xb, dim, dim as i32, 1);
-        let _ = &gpu.matmul2(gpu_state.v, gpu_weights.wv + (layer * dim * dim) as u64, gpu_state.xb, dim, dim as i32, 1);
+
+        let mut v = vec![0.0f32;cfg.dim];
+        let mut q = vec![0.0f32;cfg.dim];
+        let mut k: Vec<f32> = vec![0.0f32;cfg.dim];
+        let mut xb = vec![0.0f32;cfg.dim];
+        let mut x = vec![0.0f32;cfg.dim];
+        let mut rms_att_weight = vec![0.0f32;cfg.dim * cfg.n_layers];
+        let mut k_cache = vec![0.0f32;cfg.n_layers * cfg.seq_len * cfg.dim];
+        let mut v_cache = vec![0.0f32;cfg.n_layers * cfg.seq_len * cfg.dim];
+
+        let _ = &gpu.rmsnorm(gpu_state.xb, gpu_state.x, gpu_weights.rms_att_weight + (layer * dim * FLOAT_SIZE) as u64, 0, dim as i32);
+
+        // let _ = &gpu.rmsnorm(gpu_state.xb, gpu_state.x, gpu_weights.rms_att_weight, (layer * dim) as i32, dim as i32);
+
+        gpu.debug(&mut x, gpu_state.x);
+        gpu.debug(&mut xb, gpu_state.xb);
+        gpu.debug(&mut rms_att_weight, gpu_weights.rms_att_weight  as u64);
+
+        let _ = &gpu.matmul2(gpu_state.q, gpu_weights.wq + (layer * dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, dim as i32, 1);
+
+        gpu.debug(&mut q, gpu_state.q);
+
+        let _ = &gpu.matmul2(gpu_state.k, gpu_weights.wk + (layer * dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, dim as i32, 1);
+
+        gpu.debug(&mut k, gpu_state.k);
+
+        let _ = &gpu.matmul2(gpu_state.v, gpu_weights.wv + (layer * dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, dim as i32, 1);
+
+        gpu.debug(&mut v, gpu_state.v);
+
 
         for h in 0..cfg.n_heads {
 
             let q = gpu_state.q + (h * head_size) as u64;
             let k = gpu_state.k + (h * head_size) as u64;
             let _ = &gpu.apply_position(q, k, gpu_weights.freq_cis_real, gpu_weights.freq_cis_imag, cfg.n_heads as i32, head_size as i32);
-
         }
 
 
+        gpu.debug(&mut v, gpu_state.v);
+
+        gpu.debug(&mut q, gpu_state.q as u64);
+
+        gpu.debug(&mut k, gpu_state.k as u64);
+
+        gpu.debug(&mut xb, gpu_state.xb);
 
 
 
-        // gpu.rmsnorm(gpu_state.xb, gpu_state.x, gpu_weights.rms_att_weight, (layer * dim) as i32, dim as i32);
+        // -- %%
+        let lo = layer * cfg.seq_len * dim;
+        let _ = &gpu.copy_from_slice(gpu_state.k, gpu_state.key_cache + ((lo + pos * dim) * FLOAT_SIZE) as u64, dim as i32);
+        let _ = &gpu.copy_from_slice(gpu_state.v, gpu_state.value_cache + ((lo + pos * dim) * FLOAT_SIZE) as u64, dim as i32);
+
+        gpu.debug(&mut k_cache, gpu_state.key_cache);
+        gpu.debug(&mut v_cache, gpu_state.value_cache);
+
+
+        if layer == 1 {
+            print!("");
+        }
+        let _ = &gpu.multi_head_attention(gpu_state, cfg, layer, pos);
+
+        // ---
+        let mut att = vec![0.0f32;cfg.n_heads * cfg.seq_len];
+        gpu.debug(&mut att, gpu_state.att);
+        let mut xb = vec![0.0f32;cfg.dim];
+        gpu.debug(&mut xb, gpu_state.xb);
+
+        //----
+        // > xb broken after 96
+        let _ = &gpu.matmul2(gpu_state.xb2, gpu_weights.wo + (layer * dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, dim as i32, 1);
+        // let _ = &gpu.matmul2(gpu_state.v, gpu_weights.wv + (layer * dim * dim) as u64, gpu_state.xb, dim, dim as i32, 1);
+
+        let mut mainxb = vec![0.0f32;cfg.dim];
+
+
+        let mut xb2 = vec![0.0f32;cfg.dim];
+        gpu.debug(&mut xb2, gpu_state.xb2);
+        let mut wo = vec![0.0f32;cfg.dim * cfg.dim];
+        gpu.debug(&mut wo, gpu_weights.wo + (layer * dim * dim) as u64);
+        let mut xb: Vec<f32> = vec![0.0f32;cfg.dim];
+        gpu.debug(&mut xb, gpu_state.xb);
+
+        // matmul(&mut mainxb, &wo, &xb, dim);
+
+
+
+        let _ = &gpu.array_add(gpu_state.x, gpu_state.xb2, dim);
+
         let mut buf1 = vec![0.0f32;cfg.dim];
+        gpu.debug(&mut buf1, gpu_state.x);
+//------
+        let _ = &gpu.rmsnorm(gpu_state.xb, gpu_state.x, gpu_weights.rms_ffn_weight, (layer * dim) as i32, dim as i32);
+
+        let mut xb = vec![0.0f32;cfg.dim];
+        gpu.debug(&mut xb, gpu_state.xb);
+
+        let _ = &gpu.matmul2(gpu_state.hb, gpu_weights.w1 + (layer * hidden_dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, hidden_dim as i32, 1);
+
+        let _ = &gpu.matmul2(gpu_state.hb2, gpu_weights.w3 + (layer * hidden_dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, hidden_dim as i32, 1);
+
+        let mut hb = vec![0.0f32;cfg.dim];
+        gpu.debug(&mut hb, gpu_state.hb);
         let mut buf2 = vec![0.0f32;cfg.dim];
         let mut buf3 = vec![0.0f32;cfg.dim];
-        gpu.debug(&mut buf1, gpu_state.q);
-        gpu.debug(&mut buf2, gpu_state.k);
-        gpu.debug(&mut buf3, gpu_state.v);
+
+        gpu.debug(&mut buf2, gpu_state.hb2);
+        gpu.debug(&mut buf3, gpu_state.xb);
+
+
+        //---
+        let _ = &gpu.sinu(gpu_state.hb, hidden_dim as i32);
+
+        let mut hb = vec![0.0f32;cfg.dim];
+        gpu.debug(&mut hb, gpu_state.hb);
+
+        let _ = &gpu.array_mult(gpu_state.hb, gpu_state.hb2, hidden_dim as i32);
+
+        let mut hb = vec![0.0f32;cfg.dim];
+        gpu.debug(&mut hb, gpu_state.hb);
+
+        let _ = &gpu.matmul2(gpu_state.xb, gpu_weights.w2 + (layer * dim * hidden_dim * FLOAT_SIZE) as u64, gpu_state.hb, hidden_dim, dim as i32, 1);
+
+        let _  = &gpu.array_add(gpu_state.x, gpu_state.xb, dim);
+
+        let mut key_cache = vec![0.0f32;cfg.dim];
+        let mut x = vec![0.0f32;cfg.dim];
+        let mut xb = vec![0.0f32;cfg.dim];
+        gpu.debug(&mut key_cache, gpu_state.key_cache);
+        gpu.debug(&mut x, gpu_state.x);
+        gpu.debug(&mut xb, gpu_state.xb);
         // unsafe { let _ = memcpy_dtoh_sync(& mut buf2, gpu_state.xb); };
-        println!("ok");
-
-
+        print!("");
     }
 
-    let mut buf2 = vec![0.0f32;cfg.dim];
-    unsafe { let _ = memcpy_dtoh_sync(& mut buf2, gpu_state.x); };
-    println!("ok");
+    let mut buf1 = vec![0.0f32;dim];
+    gpu.debug(&mut buf1, gpu_state.x);
 
-    println!("ok {:?}", buf2);
+    let _ = &gpu.copy_from_slice(gpu_state.x, gpu_state.xb, dim as i32);
 
-    let sz = cfg.vocab_size * cfg.dim;
-    let mut buf3 = vec![0.0f32;sz];
-    unsafe { let _ = memcpy_dtoh_sync(& mut buf3, gpu_weights.token_embedding_table); };
-    println!("ok");
+    let mut buf1 = vec![0.0f32;dim];
+    gpu.debug(&mut buf1, gpu_state.x);
+
+
+
+    let _ = &gpu.rmsnorm(gpu_state.x, gpu_state.xb, gpu_weights.rms_final_weight, 0, dim as i32);
+
+
+    let mut x = vec![0.0f32;dim];
+    gpu.debug(&mut x, gpu_state.x);
+    let mut xb = vec![0.0f32;dim];
+    gpu.debug(&mut xb, gpu_state.xb);
+    let mut rms_final_weight = vec![0.0f32;dim];
+    gpu.debug(&mut rms_final_weight, gpu_weights.rms_final_weight);
+
+    let mut mainbuf4 = vec![0.0f32;dim];
+    rmsnorm(&mut mainbuf4, &xb, &rms_final_weight);
+
+    let _ = &gpu.matmul2(gpu_state.logits, gpu_weights.wcls, gpu_state.x, dim, cfg.vocab_size as i32, 1);
+
+    let mut logits = vec![0.0f32;dim];
+    gpu.debug(&mut logits, gpu_state.logits);
+    let mut buf3 = vec![0.0f32;dim];
+    gpu.debug(&mut buf3, gpu_state.x);
+
+    print!("");
+
 
 
 }
@@ -554,7 +696,7 @@ impl TransformerWeightsGPU {
                 wcls = allocate(device, &val);
                 wcls_exists = true;
             }
-            None => (),
+            None => {wcls = token_embedding_table;},
         }
 
         Self {
@@ -726,10 +868,10 @@ fn softmax(x: &mut [f32]) {
 // W (d,n) @ x (n,) -> xout (d,)
 fn matmul(o: &mut Vec<f32>, w: &[f32], x: &Vec<f32>, n: usize) {
     let le = o.len();
-    #[cfg(not(feature = "gpu"))]
+    // #[cfg(not(feature = "gpu"))]
     let _ = device::cpu::CPU::matmul(o, w, &x, n, le, 1);
-    #[cfg(feature = "gpu")]
-    let _ = device::gpu::cuda::GPU::matmul(o, w, &x, n, le, 1);
+    // #[cfg(feature = "gpu")]
+    // let _ = device::gpu::cuda::GPU::matmul(o, w, &x, n, le, 1);
 }
 
 ///
@@ -905,9 +1047,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::softmax;
+
     // use super::*;
     #[test]
-    fn test_matrix_mul() {
+    fn test_softmax() {
+        let mut i = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
+        softmax(&mut i);
+        println!("{:?}", i);
 
     }
 
