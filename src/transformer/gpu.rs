@@ -139,18 +139,26 @@ impl Transformer for TransformerGPU {
         let gpu = &self.device;
         let gpu_state = &self.state;
 
+
+        let mut v = vec![0.0f32;cfg.dim];
+        let mut q = vec![0.0f32;cfg.dim];
+        let mut k: Vec<f32> = vec![0.0f32;cfg.dim];
+        let mut xb = vec![0.0f32;cfg.dim];
+        let mut x = vec![0.0f32;cfg.dim];
+        let mut rms_att_weight = vec![0.0f32;cfg.dim * cfg.n_layers];
+        let mut k_cache = vec![0.0f32;cfg.n_layers * cfg.seq_len * cfg.dim];
+        let mut v_cache = vec![0.0f32;cfg.n_layers * cfg.seq_len * cfg.dim];
+
+
         self.device.copy_from_slice(gpu_weights.token_embedding_table + (token * dim * FLOAT_SIZE) as u64, gpu_state.x, dim as i32);
 
-        for layer in 0..cfg.n_layers {
+        let pos_real = gpu_weights.freq_cis_real + (pos * (head_size / 2) * FLOAT_SIZE) as u64;
+        let pos_img = gpu_weights.freq_cis_imag + (pos * (head_size / 2) * FLOAT_SIZE) as u64;
 
-            let mut v = vec![0.0f32;cfg.dim];
-            let mut q = vec![0.0f32;cfg.dim];
-            let mut k: Vec<f32> = vec![0.0f32;cfg.dim];
-            let mut xb = vec![0.0f32;cfg.dim];
-            let mut x = vec![0.0f32;cfg.dim];
-            let mut rms_att_weight = vec![0.0f32;cfg.dim * cfg.n_layers];
-            let mut k_cache = vec![0.0f32;cfg.n_layers * cfg.seq_len * cfg.dim];
-            let mut v_cache = vec![0.0f32;cfg.n_layers * cfg.seq_len * cfg.dim];
+        if pos == 1 {
+            print!("");
+        }
+        for layer in 0..cfg.n_layers {
 
             let _ = &gpu.rmsnorm(gpu_state.xb, gpu_state.x, gpu_weights.rms_att_weight + (layer * dim * FLOAT_SIZE) as u64, dim as i32);
 
@@ -175,9 +183,9 @@ impl Transformer for TransformerGPU {
 
             for h in 0..cfg.n_heads {
 
-                let q = gpu_state.q + (h * head_size) as u64;
-                let k = gpu_state.k + (h * head_size) as u64;
-                let _ = &gpu.apply_position(q, k, gpu_weights.freq_cis_real, gpu_weights.freq_cis_imag, cfg.n_heads as i32, head_size as i32);
+                let q = gpu_state.q + (h * head_size * FLOAT_SIZE) as u64;
+                let k = gpu_state.k + (h * head_size * FLOAT_SIZE) as u64;
+                let _ = &gpu.apply_position(q, k, pos_real, pos_img, cfg.n_heads as i32, head_size as i32);
             }
 
             gpu.debug(&mut v, gpu_state.v);
@@ -264,8 +272,7 @@ impl Transformer for TransformerGPU {
             print!("");
         }
 
-        let mut buf1 = vec![0.0f32;dim];
-        gpu.debug(&mut buf1, gpu_state.x);
+        gpu.debug(&mut x, gpu_state.x);
 
         let _ = &gpu.copy_from_slice(gpu_state.x, gpu_state.xb, dim as i32);
 

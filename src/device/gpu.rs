@@ -281,8 +281,9 @@ impl GPU {
         unsafe { f.launch(LaunchConfig::for_num_elems((head_size / 2 + 1) as u32), (q, k, pos_real, pos_img, n_heads, head_size)) }.unwrap();
     }
 
-    pub fn debug(&self, _o_buf: &mut Vec<f32>, _input: CUdeviceptr) {
-        // unsafe { let _ = memcpy_dtoh_sync(o_buf, input); };
+    pub fn debug(&self, o_buf: &mut Vec<f32>, input: CUdeviceptr) {
+        use cudarc::driver::{DevicePtr, result::memcpy_dtoh_sync};
+        unsafe { let _ = memcpy_dtoh_sync(o_buf, input); };
         // println!("--------------------\noutput_buf is: {:?}\n", o_buf)
     }
 }
