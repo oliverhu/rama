@@ -6,15 +6,15 @@ use rand_chacha::ChaCha20Rng;
 use rand::{Rng, SeedableRng};
 use crate::utils::read::*;
 pub struct TransformerCPU {
-    config: Config,
-    weights: TransformerWeights,
-    state: RunState,
-    device: CPU
+    pub config: Config,
+    pub weights: TransformerWeights,
+    pub state: RunState,
+    pub device: CPU
 }
 
 impl Transformer for TransformerCPU {
-    fn get_config(&self) -> &Config {
-        &self.config
+    fn get_config(&self) -> Config {
+        self.config.clone()
     }
     fn sample(&mut self, temperature: f32) -> usize {
         let next;
@@ -32,7 +32,7 @@ impl Transformer for TransformerCPU {
                 logits.iter_mut().for_each(|z| *z /= temperature);
             }
             // compute probabilities
-            self.device.softmax(logits);
+            self.device.softmax(logits, 0);
             // next = sample(&transformer.state.logits, &mut rng);
             next = sample_top_q(&logits, self.config.vocab_size, 0.9, &mut rng);
 
@@ -93,7 +93,7 @@ impl Transformer for TransformerCPU {
             // In comparison, batch normalization normalizes by features (columns);
             // Since we don't need to recenter but only rescaling, we use RMSNorm than
             // actual layer norm, and it worked well in practice.
-            self.device.rmsnorm(&mut state.xb, &state.x, &weights.rms_att_weight[layer * dim..(layer + 1) * dim]);
+            self.device.rmsnorm(&mut state.xb, &state.x, &weights.rms_att_weight[layer * dim..(layer + 1) * dim], dim);
 
             // Calculate Q, K, V
             self.device.matmul_1d(&mut state.q, &weights.wq[layer * dim * dim..(layer + 1) * dim * dim], &state.xb, dim);
@@ -138,7 +138,7 @@ impl Transformer for TransformerCPU {
                         .map(|(&a, &b)| a * b)
                         .sum::<f32>() / (head_size as f32).sqrt();
                 }
-                self.device.softmax(&mut att[..(pos + 1)]);
+                self.device.softmax(&mut att[..(pos + 1)], pos + 1);
                 xb.fill(0.0);
                 for t in 0..(pos + 1) {
                     let ko = lo + t * dim + h * head_size;
@@ -153,7 +153,7 @@ impl Transformer for TransformerCPU {
             state.x.iter_mut().zip(state.xb2.iter()).for_each(|(a, b)| *a += *b);
 
             // pre ffn rmsnorm
-            self.device.rmsnorm(&mut state.xb, &state.x, &weights.rms_ffn_weight[layer * dim .. (layer + 1) * dim]);
+            self.device.rmsnorm(&mut state.xb, &state.x, &weights.rms_ffn_weight[layer * dim .. (layer + 1) * dim], dim);
 
             // ffn
             self.device.matmul_1d(&mut state.hb,  &weights.w1[layer * hidden_dim * dim..(layer + 1) * hidden_dim * dim], &state.xb, dim);
@@ -171,7 +171,7 @@ impl Transformer for TransformerCPU {
 
         // final rmsnorm
         state.xb.copy_from_slice(&state.x);
-        self.device.rmsnorm(&mut state.x, &state.xb, &weights.rms_final_weight);
+        self.device.rmsnorm(&mut state.x, &state.xb, &weights.rms_final_weight, 0);
 
         // compute logits
         let wcls = match &weights.wcls {
@@ -185,24 +185,21 @@ impl Transformer for TransformerCPU {
 
 }
 
-struct TransformerWeights {
-    token_embedding_table: Vec<f32>,
-    rms_att_weight: Vec<f32>,
-    rms_ffn_weight: Vec<f32>,
-
-    wq: Vec<f32>,
-    wk: Vec<f32>,
-    wv: Vec<f32>,
-    wo: Vec<f32>,
-
-    w1: Vec<f32>,
-    w2: Vec<f32>,
-    w3: Vec<f32>,
-
-    rms_final_weight: Vec<f32>,
-    freq_cis_real: Vec<f32>,
-    freq_cis_imag: Vec<f32>,
-    wcls: Option<Vec<f32>>,
+pub struct TransformerWeights {
+    pub token_embedding_table: Vec<f32>,
+    pub rms_att_weight: Vec<f32>,
+    pub rms_ffn_weight: Vec<f32>,
+    pub wq: Vec<f32>,
+    pub wk: Vec<f32>,
+    pub wv: Vec<f32>,
+    pub wo: Vec<f32>,
+    pub w1: Vec<f32>,
+    pub w2: Vec<f32>,
+    pub w3: Vec<f32>,
+    pub rms_final_weight: Vec<f32>,
+    pub freq_cis_real: Vec<f32>,
+    pub freq_cis_imag: Vec<f32>,
+    pub wcls: Option<Vec<f32>>,
 }
 
 impl TransformerWeights {
@@ -232,19 +229,19 @@ impl TransformerWeights {
 
 }
 
-struct RunState {
-    x: Vec<f32>,
-    xb: Vec<f32>,
-    xb2: Vec<f32>,
-    hb: Vec<f32>,
-    hb2: Vec<f32>,
-    q: Vec<f32>,
-    k: Vec<f32>,
-    v: Vec<f32>,
-    att: Vec<f32>,
-    logits: Vec<f32>,
-    key_cache: Vec<f32>,
-    value_cache: Vec<f32>,
+pub struct RunState {
+    pub x: Vec<f32>,
+    pub xb: Vec<f32>,
+    pub xb2: Vec<f32>,
+    pub hb: Vec<f32>,
+    pub hb2: Vec<f32>,
+    pub q: Vec<f32>,
+    pub k: Vec<f32>,
+    pub v: Vec<f32>,
+    pub att: Vec<f32>,
+    pub logits: Vec<f32>,
+    pub key_cache: Vec<f32>,
+    pub value_cache: Vec<f32>,
 }
 
 impl RunState {
@@ -267,8 +264,6 @@ impl RunState {
     }
 
 }
-
-
 
 fn sample_top_q(probabilities: &Vec<f32>, num: usize, topp: f32, rng: &mut ChaCha20Rng) -> usize {
     let cutoff = (1.0f32 - topp) / ((num - 1) as f32);

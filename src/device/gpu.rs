@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use cudarc::driver::sys::CUdeviceptr;
-use cudarc::driver::{CudaDevice, DriverError, LaunchAsync, LaunchConfig, CudaFunction};
+use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig, CudaFunction};
 use cudarc::nvrtc::compile_ptx;
 
-use crate::{RunStateGPU, Config};
+use crate::transformer::Config;
+use crate::transformer::gpu::RunStateGPU;
 
 use super::device::Device;
 
@@ -31,7 +32,7 @@ extern \"C\" __global__ void copy_from_slice(float *src, float *dest, int n) {
     }
 }
 
-extern \"C\" __global__ void rmsnorm(float *output, float *input, float *weight, int start, int N) {
+extern \"C\" __global__ void rmsnorm(float *output, float *input, float *weight, int N) {
     int i = blockIdx.x*blockDim.x+threadIdx.x;
     if (i == 1) {
         float sum = 0.0;
@@ -40,7 +41,7 @@ extern \"C\" __global__ void rmsnorm(float *output, float *input, float *weight,
         }
         float v = 1.0 / sqrtf((sum / N) + 0.00001);
         for (int k = 0; k < N; k++) {
-            output[k] = weight[start + k] * v * input[k];
+            output[k] = weight[k] * v * input[k];
         }
 
         // output[i] = sum; //input[i];// weight[start + i];
@@ -270,19 +271,9 @@ impl GPU {
         unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (src, dest, n,)) }.unwrap();
     }
 
-    pub fn rmsnorm(&self, o: CUdeviceptr, x: CUdeviceptr, w: CUdeviceptr, start: i32, n: i32) {
+    pub fn rmsnorm(&self, o: CUdeviceptr, x: CUdeviceptr, w: CUdeviceptr, n: i32) {
         let f = self.gpu.get_func("module", "rmsnorm").unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (o, x, w, start, n,)) }.unwrap();
-    }
-
-    pub fn matmul2(&self, o: CUdeviceptr, a: CUdeviceptr, b: CUdeviceptr, width: usize, o_rows: i32, o_cols: i32) {
-        let f = self.gpu.get_func("module", "matmul").unwrap();
-        let cfg = LaunchConfig {
-            block_dim: (COL_TILE_WIDTH as u32, ROW_TILE_WIDTH as u32, 1),
-            grid_dim: ((o_cols/COL_TILE_WIDTH as i32 + 2) as u32, (o_rows/ROW_TILE_WIDTH as i32 + 2) as u32, 1),
-            shared_mem_bytes: 0,
-        };
-        unsafe { f.launch(cfg, (a, b, o, width, o_rows, o_cols)) }.unwrap();
+        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (o, x, w, n,)) }.unwrap();
     }
 
     pub fn apply_position(&self, q: CUdeviceptr, k: CUdeviceptr, pos_real: CUdeviceptr, pos_img: CUdeviceptr, n_heads: i32, head_size: i32) {
@@ -290,51 +281,34 @@ impl GPU {
         unsafe { f.launch(LaunchConfig::for_num_elems((head_size / 2 + 1) as u32), (q, k, pos_real, pos_img, n_heads, head_size)) }.unwrap();
     }
 
-    pub fn softmax(&self, arr: CUdeviceptr, size: i32) {
-        let f = self.gpu.get_func("module", "softmax").unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems(size as u32), (arr, size)) }.unwrap();
-    }
-
-    ///
-    /// o_buf: the buffer to write the GPU ram into
-    pub fn debug(&self, o_buf: &mut Vec<f32>, input: CUdeviceptr) {
+    pub fn debug(&self, _o_buf: &mut Vec<f32>, _input: CUdeviceptr) {
         // unsafe { let _ = memcpy_dtoh_sync(o_buf, input); };
         // println!("--------------------\noutput_buf is: {:?}\n", o_buf)
     }
 }
 
-impl Device for GPU {
-    type Err = DriverError;
-    fn matmul(o: &mut [f32], a: &[f32], b: &[f32], width: usize, o_rows: usize, o_cols: usize) {
-        let ptx = compile_ptx(PTX_SRC).unwrap();
+impl Device<CUdeviceptr, CUdeviceptr> for GPU {
+    fn matmul_1d(&self, o: CUdeviceptr, w: CUdeviceptr, x: CUdeviceptr, n: usize) {
+        self.matmul(o, w, x, n, n, 1)
+    }
 
-        let dev = CudaDevice::new(0)?;
-
-        dev.load_ptx(ptx, "matmul", &["matmul"]).unwrap();
-        let f = dev.get_func("matmul", "matmul").unwrap();
-        let a_dev = dev.htod_sync_copy(&a)?;
-        let b_dev: cudarc::driver::CudaSlice<f32> = dev.htod_sync_copy(&b)?;
-        let mut o_dev = dev.htod_sync_copy(&o)?;
-        // println!("Copied in {:?}", start.elapsed());
-
+    fn matmul(&self, o: CUdeviceptr, a: CUdeviceptr, b: CUdeviceptr, width: usize, o_rows: usize, o_cols: usize) {
+        let f = self.gpu.get_func("module", "matmul").unwrap();
         let cfg = LaunchConfig {
             block_dim: (COL_TILE_WIDTH as u32, ROW_TILE_WIDTH as u32, 1),
-            grid_dim: ((o_cols/COL_TILE_WIDTH + 1) as u32, (o_rows/ROW_TILE_WIDTH + 1) as u32, 1),
+            grid_dim: ((o_cols/COL_TILE_WIDTH + 2) as u32, (o_rows/ROW_TILE_WIDTH + 2) as u32, 1),
             shared_mem_bytes: 0,
         };
+        unsafe { f.launch(cfg, (a, b, o, width, o_rows, o_cols)) }.unwrap();
+    }
+    fn rmsnorm(&self, o: CUdeviceptr, x: CUdeviceptr, w: CUdeviceptr, n: usize) {
+        let f = self.gpu.get_func("module", "rmsnorm").unwrap();
+        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (o, x, w, n,)) }.unwrap();
+    }
 
-        // let cfg = LaunchConfig {
-        //     block_dim: (o_cols as u32, o_rows as u32, 1),
-        //     grid_dim: (20, 20, 1),
-        //     shared_mem_bytes: 0,
-        // };
-
-        unsafe { f.launch(cfg, (&a_dev, &b_dev, &mut o_dev, width, o_rows, o_cols)) }?;
-        dev.dtoh_sync_copy_into(&o_dev,  o)?;
-        // println!("Found {:?} in {:?}", o, start.elapsed());
-
-        Ok(())
-
+    fn softmax(&self, arr: CUdeviceptr, size: usize) {
+        let f = self.gpu.get_func("module", "softmax").unwrap();
+        unsafe { f.launch(LaunchConfig::for_num_elems(size as u32), (arr, size)) }.unwrap();
     }
 }
 
@@ -342,9 +316,6 @@ impl Device for GPU {
 mod tests {
 
     use super::*;
-
-    use cudarc::driver::{sys::CUdeviceptr, CudaSlice, DevicePtr, DeviceRepr};
-    use rand::prelude::*;
 
     #[test]
     fn test_test_call_another() {
@@ -359,51 +330,4 @@ mod tests {
         println!("{:?}", b_host);
         assert_eq!(b_host, b_host_eval)
     }
-
-    #[test]
-    fn test_softmax() {
-        let gpu = GPU::new();
-        let a_host = [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let a_dev = gpu.gpu.htod_sync_copy(&a_host).unwrap();
-        gpu.softmax(*a_dev.device_ptr(), 6);
-        let b_host = gpu.gpu.sync_reclaim(a_dev).unwrap();
-        let b_expected = [0.0042697787, 0.011606461, 0.031549633, 0.085760795, 0.23312204, 0.6336913];
-        b_host.iter().zip(b_expected).for_each(|(t, r)|
-            {
-                assert!((*t - r).abs() < f32::EPSILON);
-            }
-        );
-    }
-
-    #[test]
-    fn test_matrix_mul2() {
-        let a_host = [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let b_host = [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let mut c_host = [0.0f32; 4];
-        let _ = GPU::matmul(&mut c_host, &a_host, &b_host, 3, 2, 2);
-
-        assert_eq!(c_host, [22.0, 28.0, 49.0, 64.0]);
-
-        let mut rng = thread_rng();
-
-        // Test size larger than 1024 threads
-        const SIZE: usize = 288*288;
-        let mut arr1 = [0.0f32; SIZE];
-        let mut arr2 = [0.0f32; SIZE];
-        let mut oo = [0.0f32; 288];
-        for i in 0..SIZE {
-            arr1[i] = rng.gen::<f32>();
-            arr2[i] = rng.gen::<f32>();
-        }
-
-        let e = GPU::matmul(&mut oo, &arr1, &arr2, 288, 288, 288);
-        match e {
-            Ok(_) => (),
-            Err(_) => panic!("error!"),
-        }
-
-        assert_ne!(oo[0], 0.0f32);
-        assert_ne!(oo[287], 0.0f32);
-    }
-
 }

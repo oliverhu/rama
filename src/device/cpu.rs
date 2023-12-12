@@ -9,7 +9,7 @@ impl Device<&mut [f32], &[f32]> for CPU {
         let _ = self.matmul(o, w, &x, n, le, 1);
     }
 
-    fn rmsnorm(&self, o: &mut [f32], x: &[f32], weight: &[f32]) {
+    fn rmsnorm(&self, o: &mut [f32], x: &[f32], weight: &[f32], _n: usize) {
         let v: f32 =
         1.0f32 /
         (x.iter().map(|x| x * x ).sum::<f32>() / x.len() as f32 + 1e-5f32)
@@ -19,7 +19,7 @@ impl Device<&mut [f32], &[f32]> for CPU {
         }
     }
 
-    fn softmax(&self, x: &mut [f32]) {
+    fn softmax(&self, x: &mut [f32], _n: usize) {
         let max = x.par_iter().copied().reduce(|| x[0], |a, b| a.max(b));
         x.par_iter_mut().for_each(|a| *a=(*a-max).exp());
         let sum = x.par_iter().sum::<f32>();

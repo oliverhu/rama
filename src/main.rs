@@ -1,6 +1,6 @@
 use clap::Parser;
 use transformer::Transformer;
-use transformer::cpu::TransformerCPU;
+use transformer::gpu::TransformerGPU;
 use core::f32;
 use std::collections::HashMap;
 use std::fs::File;
@@ -12,9 +12,6 @@ mod device;
 mod transformer;
 mod utils;
 use utils::read::read_n;
-
-#[cfg(feature = "gpu")]
-use transformer::gpu;
 
 #[derive(Parser, Debug)]
 #[command(long_about = None)]
@@ -62,7 +59,7 @@ fn main() {
     let path = &args.model;
     let token_path = &args.tokenizer;
     #[cfg(feature="gpu")]
-    let transformer = &mut Transformer::from_file(path);
+    let transformer = &mut TransformerGPU::from_file(path);
     #[cfg(not(feature="gpu"))]
     let transformer = &mut TransformerCPU::from_file(path);
 
@@ -173,21 +170,8 @@ where T: Transformer
     let mut pos = 0;
     let mut next;
 
-    #[cfg(feature = "gpu")] {
-        let gpu = GPU::new();
-        let mut tg = TransformerWeightsGPU::from_hw(&transformer.weights, &gpu);
-        let mut sg = RunStateGPU::from_state(&transformer.state, &gpu);
-    }
-
     while pos < steps {
-        #[cfg(not(feature = "gpu"))]
         transformer.forward( token, pos);
-        #[cfg(feature = "gpu")] {
-            forward_gpu(transformer, &mut tg, &mut sg, &gpu, token, pos);
-            let mut logits = [0.0f32; 32000];
-            unsafe { let _ = memcpy_dtoh_sync(&mut logits, sg.logits); };
-        }
-
 
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
