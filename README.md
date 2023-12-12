@@ -58,7 +58,7 @@ Running llama2-7b f32 in M1 macbook is extremely slow since it requires 25GB mem
 ## TODOs
 - [x] Support chat interface.
 - [x] Add tok/s.
-- [ ] Support GPU inference.
+- [x] Support GPU inference.
 - [ ] Support quantization.
 - [ ] Support flash attention.
 - [ ] Support AMD GPUs.
