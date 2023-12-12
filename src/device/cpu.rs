@@ -3,13 +3,13 @@ use rayon::prelude::*;
 use super::device::*;
 pub struct CPU {}
 
-impl Device<&mut Vec<f32>, &Vec<f32>> for CPU {
-    fn matmul_1d(&self, o: &mut Vec<f32>, w: &Vec<f32>, x: &Vec<f32>, n: usize) {
+impl Device<&mut [f32], &[f32]> for CPU {
+    fn matmul_1d(&self, o: &mut [f32], w: &[f32], x: &[f32], n: usize) {
         let le = o.len();
         let _ = self.matmul(o, w, &x, n, le, 1);
     }
 
-    fn rmsnorm(&self, o: &mut Vec<f32>, x: &Vec<f32>, weight: &Vec<f32>) {
+    fn rmsnorm(&self, o: &mut [f32], x: &[f32], weight: &[f32]) {
         let v: f32 =
         1.0f32 /
         (x.iter().map(|x| x * x ).sum::<f32>() / x.len() as f32 + 1e-5f32)
@@ -19,14 +19,14 @@ impl Device<&mut Vec<f32>, &Vec<f32>> for CPU {
         }
     }
 
-    fn softmax(&self, x: &mut Vec<f32>) {
+    fn softmax(&self, x: &mut [f32]) {
         let max = x.par_iter().copied().reduce(|| x[0], |a, b| a.max(b));
         x.par_iter_mut().for_each(|a| *a=(*a-max).exp());
         let sum = x.par_iter().sum::<f32>();
         x.par_iter_mut().for_each(|a| *a /= sum);
     }
 
-    fn matmul(&self, o: &mut Vec<f32>, a: &Vec<f32>, b: &Vec<f32>, width: usize, _o_rows: usize, o_cols: usize) {
+    fn matmul(&self, o: &mut [f32], a: &[f32], b: &[f32], width: usize, _o_rows: usize, o_cols: usize) {
 
         o.par_iter_mut().enumerate().for_each(
             |(idx, o)| {

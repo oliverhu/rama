@@ -93,12 +93,12 @@ impl Transformer for TransformerCPU {
             // In comparison, batch normalization normalizes by features (columns);
             // Since we don't need to recenter but only rescaling, we use RMSNorm than
             // actual layer norm, and it worked well in practice.
-            self.device.rmsnorm(&mut state.xb, &state.x, &weights.rms_att_weight[layer * dim..(layer + 1) * dim].into());
+            self.device.rmsnorm(&mut state.xb, &state.x, &weights.rms_att_weight[layer * dim..(layer + 1) * dim]);
 
             // Calculate Q, K, V
-            self.device.matmul_1d(&mut state.q, &weights.wq[layer * dim * dim..(layer + 1) * dim * dim].into(), &state.xb, dim);
-            self.device.matmul_1d(&mut state.k, &weights.wk[layer * dim * dim..(layer + 1) * dim * dim].into(), &state.xb, dim);
-            self.device.matmul_1d(&mut state.v, &weights.wv[layer * dim * dim..(layer + 1) * dim * dim].into(), &state.xb, dim);
+            self.device.matmul_1d(&mut state.q, &weights.wq[layer * dim * dim..(layer + 1) * dim * dim], &state.xb, dim);
+            self.device.matmul_1d(&mut state.k, &weights.wk[layer * dim * dim..(layer + 1) * dim * dim], &state.xb, dim);
+            self.device.matmul_1d(&mut state.v, &weights.wv[layer * dim * dim..(layer + 1) * dim * dim], &state.xb, dim);
 
             // RoPE relative positional encoding. https://arxiv.org/pdf/2104.09864.pdf
             // b/c in attention we only care about the distance between two words, we use relative attention.
@@ -138,7 +138,7 @@ impl Transformer for TransformerCPU {
                         .map(|(&a, &b)| a * b)
                         .sum::<f32>() / (head_size as f32).sqrt();
                 }
-                self.device.softmax(&mut att[..(pos + 1)].into());
+                self.device.softmax(&mut att[..(pos + 1)]);
                 xb.fill(0.0);
                 for t in 0..(pos + 1) {
                     let ko = lo + t * dim + h * head_size;
@@ -148,23 +148,23 @@ impl Transformer for TransformerCPU {
                 }
 
             });
-            self.device.matmul_1d(&mut state.xb2, &weights.wo[layer * dim * dim..(layer + 1) * dim * dim].into(), &state.xb, dim);
+            self.device.matmul_1d(&mut state.xb2, &weights.wo[layer * dim * dim..(layer + 1) * dim * dim], &state.xb, dim);
 
             state.x.iter_mut().zip(state.xb2.iter()).for_each(|(a, b)| *a += *b);
 
             // pre ffn rmsnorm
-            self.device.rmsnorm(&mut state.xb, &state.x, &weights.rms_ffn_weight[layer * dim .. (layer + 1) * dim].into());
+            self.device.rmsnorm(&mut state.xb, &state.x, &weights.rms_ffn_weight[layer * dim .. (layer + 1) * dim]);
 
             // ffn
-            self.device.matmul_1d(&mut state.hb,  &weights.w1[layer * hidden_dim * dim..(layer + 1) * hidden_dim * dim].into(), &state.xb, dim);
-            self.device.matmul_1d(&mut state.hb2, &weights.w3[layer * hidden_dim * dim..(layer + 1) * hidden_dim * dim].into(), &state.xb, dim);
+            self.device.matmul_1d(&mut state.hb,  &weights.w1[layer * hidden_dim * dim..(layer + 1) * hidden_dim * dim], &state.xb, dim);
+            self.device.matmul_1d(&mut state.hb2, &weights.w3[layer * hidden_dim * dim..(layer + 1) * hidden_dim * dim], &state.xb, dim);
 
             // silu
             state.hb.par_iter_mut().for_each(|a|*a = *a * (1.0 / (1.0 + (-*a).exp())));
 
             state.hb.iter_mut().zip(state.hb2.iter()).for_each(|(a, &b)| *a *= b);
 
-            self.device.matmul_1d(&mut state.xb,  &weights.w2[layer *dim*hidden_dim..(layer + 1)*dim*hidden_dim].into(), &state.hb, hidden_dim);
+            self.device.matmul_1d(&mut state.xb,  &weights.w2[layer *dim*hidden_dim..(layer + 1)*dim*hidden_dim], &state.hb, hidden_dim);
 
             state.x.iter_mut().zip(state.xb.iter()).for_each(|(a, &b)| *a += b);
         }
