@@ -5,7 +5,7 @@ use rand_chacha::ChaCha20Rng;
 use crate::device::cpu::CPU;
 use crate::device::device::Device;
 use crate::device::gpu::GPU;
-use super::{cpu::{RunState, TransformerWeights, TransformerCPU}, Transformer, Config};
+use super::{ram::{RunState, TransformerWeights, TransformerCPU}, Transformer, Config};
 // size of float in bytes
 const FLOAT_SIZE: usize = 4;
 
@@ -315,7 +315,7 @@ impl Transformer for TransformerGPU {
 
     fn sample(&mut self, temperature: f32) -> usize {
         let next;
-        let rng_seed = 100;
+        let rng_seed = 10;
         let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
         let mut logits = vec![0.0f32; self.config.vocab_size];
         unsafe { let _ = memcpy_dtoh_sync(&mut logits, self.state.logits); };
@@ -333,7 +333,7 @@ impl Transformer for TransformerGPU {
             let cpu = CPU {};
             cpu.softmax(&mut logits, 0);
             // next = sample(&transformer.state.logits, &mut rng);
-            next = sample_top_q(&logits, self.config.vocab_size, 0.9, &mut rng);
+            next = sample_top_q(&logits, self.config.vocab_size, temperature, &mut rng);
 
         }
         next

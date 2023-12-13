@@ -1,6 +1,6 @@
 #[cfg(feature = "gpu")]
-pub mod gpu;
-pub mod cpu;
+pub mod hbm;
+pub mod ram;
 
 use std::{io::BufReader, fs::File};
 use crate::utils::read::*;

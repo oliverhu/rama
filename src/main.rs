@@ -1,9 +1,9 @@
 use clap::Parser;
 use transformer::Transformer;
 #[cfg(not(feature="gpu"))]
-use transformer::cpu::TransformerCPU;
+use transformer::ram::TransformerCPU;
 #[cfg(feature="gpu")]
-use transformer::gpu::TransformerGPU;
+use transformer::hbm::TransformerGPU;
 use core::f32;
 use std::collections::HashMap;
 use std::fs::File;
