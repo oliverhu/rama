@@ -13,6 +13,9 @@ pub struct TransformerCPU {
 }
 
 impl Transformer for TransformerCPU {
+    fn cpu_state(&self) -> &RunState {
+        &self.state
+    }
     fn get_config(&self) -> Config {
         self.config.clone()
     }
@@ -229,6 +232,7 @@ impl TransformerWeights {
 
 }
 
+#[derive(Default)]
 pub struct RunState {
     pub x: Vec<f32>,
     pub xb: Vec<f32>,

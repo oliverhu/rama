@@ -103,7 +103,7 @@ impl GPU {
 
     pub fn copy_from_slice(&self, src: CUdeviceptr, dest: CUdeviceptr, n: i32) {
         let f = self.gpu.get_func("module", "copy_from_slice").unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (src, dest, n,)) }.unwrap();
+        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (src, dest, n,)).unwrap(); };
     }
 
     pub fn rmsnorm(&self, o: CUdeviceptr, x: CUdeviceptr, w: CUdeviceptr, n: i32) {
@@ -114,14 +114,6 @@ impl GPU {
     pub fn apply_position(&self, q: CUdeviceptr, k: CUdeviceptr, pos_real: CUdeviceptr, pos_img: CUdeviceptr, n_heads: i32, head_size: i32) {
         let f = self.gpu.get_func("module", "apply_position").unwrap();
         unsafe { f.launch(LaunchConfig::for_num_elems((head_size / 2 + 1) as u32), (q, k, pos_real, pos_img, n_heads, head_size)) }.unwrap();
-    }
-
-    pub fn debug(&self, _o_buf: &mut Vec<f32>, _input: CUdeviceptr) {
-        #[cfg(feature="debugmode")] {
-            unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(_o_buf, _input); };
-            println!("--------------------\noutput_buf is: {:?}\n", _o_buf)
-        }
-
     }
 
 }

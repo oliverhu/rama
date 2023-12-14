@@ -63,6 +63,8 @@ fn main() {
     let token_path = &args.tokenizer;
     #[cfg(feature="gpu")]
     let transformer = &mut TransformerGPU::from_file(path);
+
+
     #[cfg(not(feature="gpu"))]
     let transformer = &mut TransformerCPU::from_file(path);
 

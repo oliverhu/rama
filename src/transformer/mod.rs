@@ -5,6 +5,8 @@ pub mod ram;
 use std::{io::BufReader, fs::File};
 use crate::utils::read::*;
 
+use self::ram::RunState;
+
 // TODO: probably rename CPU/GPU to CPU/GPU "storage" later. The only difference
 // here is where we store the weights, CPU RAM or GPU HBM.
 pub trait Transformer {
@@ -12,6 +14,7 @@ pub trait Transformer {
     fn from_file(cp_path: &str) -> Self;
     fn get_config(&self) -> Config;
     fn sample(&mut self, temperature: f32) -> usize;
+    fn cpu_state(&self) -> &RunState;
 }
 
 #[derive(Clone)]

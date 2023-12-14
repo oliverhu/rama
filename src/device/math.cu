@@ -1,3 +1,5 @@
+// Most of the kernels here requires significant optimizations..
+
 extern "C" __global__ void matmul(float* A, float* B, float* C, int width, int C_rows, int C_cols) {
     int ROW = blockIdx.y*blockDim.y+threadIdx.y;
     int COL = blockIdx.x*blockDim.x+threadIdx.x;
@@ -42,9 +44,9 @@ extern "C" __global__ void apply_position(float *q, float *k, float *pos_real, f
         float fcr = pos_real[i];
         float fci = pos_img[i];
         q[i * 2] = q[i * 2] * fcr - q[i * 2 + 1] * fci;
-        q[i * 2 + 1] = q[i * 2] * fcr + q[i * 2 + 1] * fcr;
+        q[i * 2 + 1] = q[i * 2] * fci + q[i * 2 + 1] * fcr;
         k[i * 2] = k[i * 2] * fcr - k[i * 2 + 1] * fci;
-        k[i * 2 + 1] = k[i * 2] * fcr + k[i * 2 + 1] * fcr;
+        k[i * 2 + 1] = k[i * 2] * fci + k[i * 2 + 1] * fcr;
     }
 }
 
