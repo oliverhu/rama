@@ -1,6 +1,10 @@
 # Rama
 
-Rama is a port of [llama.c](ttps://github.com/karpathy/llama2.c) in Rust, some of the code referenced another port [here](https://github.com/leo-du/llama2.rs) from [leo-du](https://github.com/leo-du). CUDA code is referenced from [cudarc](https://github.com/coreylowman/cudarc/) from [coreylowman](https://github.com/coreylowman).
+<p align="center">
+  <img src="assets/rama.png" width="300" height="300" alt="Cute Llama">
+</p>
+
+Rama is a port of [llama.c](tttps://github.com/karpathy/llama2.c) in Rust, some of the code referenced another port [here](https://github.com/leo-du/llama2.rs) from [leo-du](https://github.com/leo-du). CUDA code is referenced from [cudarc](https://github.com/coreylowman/cudarc/) from [coreylowman](https://github.com/coreylowman).
 
 This repo was created to learn Rust and understand llama2 model architectures by code - debugging is quite challenging tbh. The repo is also annotated with learning materials and documentations.
 
