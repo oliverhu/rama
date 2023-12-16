@@ -42,7 +42,7 @@ impl RunStateGPU {
         }
     }
 
-    #[cfg(feature="debug")]
+    #[allow(dead_code)]
     // GPU state debug utility
     pub fn into_state(&self, state: &mut RunState) {
         unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.x, self.x); };
@@ -191,11 +191,9 @@ impl Transformer for TransformerGPU {
             let lo = layer * cfg.seq_len * dim;
             gpu.copy_from_slice(gpu_state.k, gpu_state.key_cache + ((lo + pos * dim) * FLOAT_SIZE) as u64, dim as i32);
             gpu.copy_from_slice(gpu_state.v, gpu_state.value_cache + ((lo + pos * dim) * FLOAT_SIZE) as u64, dim as i32);
-
-            if layer == 1 {
-                print!("");
-            }
+            // self.state.into_state(&mut self._cpu_state);
             gpu.multi_head_attention(&gpu_state, &cfg, layer, pos);
+            // self.state.into_state(&mut self._cpu_state);
 
             gpu.matmul(gpu_state.xb2, gpu_weights.wo + (layer * dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, dim, 1);
 

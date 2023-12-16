@@ -52,8 +52,9 @@ extern "C" __global__ void apply_position(float *q, float *k, float *pos_real, f
 
 extern "C" __device__ void softmax(float *arr, int N) {
 
-    int i = blockIdx.x*blockDim.x+threadIdx.x;
-    if (i != 1) {return;}
+    // int i = blockIdx.x*blockDim.x+threadIdx.x;
+    // if (i != 1) {return;}
+
     // replace this max with a CUDA reduction function.
     float max = -10.0;
     for (int idx = 0; idx < N; idx++) {
@@ -74,48 +75,37 @@ extern "C" __device__ void softmax(float *arr, int N) {
 
 }
 
-extern "C" __global__ void multi_head_attention(float *xb, float *att, float *q, float *k_cache, float *v_cache, int layer, int dim, int pos, int head_size, int seq_len, int n_heads) {
-
-    // replace the input config with a config struct. the code below also needs serious refactoring later
-    // after correctness checks.
-    int hh = blockIdx.x*blockDim.x+threadIdx.x;
-    if (hh != 1) {
-        return;
-    }
-    for (int h = 0; h < n_heads; h++) {
+extern "C" __global__ void multi_head_attention_parallel(float *xb, float *att, float *q, float *k_cache, float *v_cache, int layer, int dim, int pos, int head_size, int seq_len, int n_heads) {
+    int h = blockIdx.x*blockDim.x+threadIdx.x;
+    if (h < n_heads) {
         int loff = layer * seq_len * dim;
-        float *q_h = q + h * head_size;
-        float *att_h = att + h * seq_len;
-
+        float *q_t = q + h * head_size;
+        float *att_t = att + h * seq_len;
+        float *xb_t = xb + h * head_size;
         for (int t = 0; t < pos + 1; t++) {
             int koff = loff + t * dim + h * head_size;
-            float *k = k_cache + koff;
+            float *k_t = k_cache + koff;
 
-            float sum = 0.0;
-            for (int idx = 0; idx < head_size; idx++) {
-                sum += q_h[idx] * k[idx];
+            float v = 0.0;
+            for (int i = 0; i < head_size; i++) {
+                v += q_t[i] * k_t[i];
             }
+            att_t[t] = v / sqrtf(head_size);
 
-            sum = sum / sqrtf(head_size);
-            att_h[t] = sum;
         }
+        softmax(att_t, pos + 1);
 
-        softmax(att_h, pos + 1);
-
-        float *xb_tmp = xb + h * head_size;
-        for (int k = 0; k < head_size; k++) {
-            xb_tmp[k] = 0;
+        for (int i = 0; i < head_size; i++) {
+            xb_t[i] = 0;
         }
         for (int t = 0; t < pos + 1; t++) {
             int koff = loff + t * dim + h * head_size;
-            float *v = v_cache + koff;
-            float a = att_h[t];
-            for (int xbi = 0; xbi < head_size; xbi++) {
-                xb_tmp[xbi] += a * v[xbi];
-
-                ///TDBD
-                // xb_tmp[xbi] = v[0];
+            float *v_c = v_cache + koff;
+            float a = att_t[t];
+            for (int i = 0; i < head_size; i++) {
+                xb_t[i] += a * v_c[i];
             }
+
         }
     }
 

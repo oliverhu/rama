@@ -47,6 +47,7 @@ pub struct GPU {
 impl GPU {
     pub fn new() -> Self {
         let dev = CudaDevice::new(0).unwrap();
+
         let cu_file = std::fs::read_to_string("./src/device/math.cu").unwrap();
         let ptx = compile_ptx(cu_file).unwrap();
         dev.load_ptx(ptx, "module", &
@@ -54,7 +55,7 @@ impl GPU {
              "copy_from_slice",
              "rmsnorm",
              "apply_position",
-             "multi_head_attention",
+             "multi_head_attention_parallel",
              "array_add",
              "array_mult",
              "sinu"]).unwrap();
@@ -80,11 +81,8 @@ impl GPU {
     }
 
     pub fn multi_head_attention(&self, gpu_state: &RunStateGPU, cfg: &Config, layer: usize, pos: usize) {
-
-        // extern \"C\" __global__ void multi_head_attention(float *xb, float *att, float *q, float *k_cache, float *v_cache, int layer, int dim, int pos, int head_size, int seq_len, int n_heads) {
-
         let head_size = cfg.dim / cfg.n_heads;
-        let f = self.gpu.get_func("module", "multi_head_attention").unwrap();
+        let f = self.gpu.get_func("module", "multi_head_attention_parallel").unwrap();
         unsafe { f.launch(LaunchConfig::for_num_elems(cfg.n_heads as u32), (
             gpu_state.xb,
             gpu_state.att,

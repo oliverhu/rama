@@ -5,3 +5,4 @@ llama2.c
 .vscode/
 llama*bin
 __pycache__/
+*.bin
