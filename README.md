@@ -50,12 +50,15 @@ The little boy was very happy with his castle...
 ```
 
 ## Performance
-Model          | Platform       | Token/s
-:--------------|:---------------|:------------
-stories15M.bin | Ryzen 7 5700X  | 402.35 tok/s
-llama2-7b.bin  | Ryzen 7 5700X  | 1.38 tok/s
-stories15M.bin | M1 Macbook Pro | 196.47 tok/s
-llama2-7b.bin  | M1 Macbook Pro | 0.02 tok/s
+Model           | Platform       | Token/s
+:---------------|:---------------|:------------
+stories15M.bin  | Ryzen 7 5700X  | 402.35 tok/s
+stories15M.bin  | M1 Macbook Pro | 196.47 tok/s
+stories110M.bin | Ryzen 7 5700X  | 68 tok/s
+stories110M.bin | RTX 4700ti     | 80 tok/s
+llama2-7b.bin   | Ryzen 7 5700X  | 1.38 tok/s
+llama2-7b.bin   | M1 Macbook Pro | 0.02 tok/s
+
 
 Running llama2-7b f32 in M1 macbook is extremely slow since it requires 25GB memory but M1 only has 16GB total memory, the amount of swapping is huge.
 

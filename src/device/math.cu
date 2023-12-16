@@ -32,8 +32,6 @@ extern "C" __global__ void rmsnorm(float *output, float *input, float *weight, i
         for (int k = 0; k < N; k++) {
             output[k] = weight[k] * v * input[k];
         }
-
-        // output[i] = sum; //input[i];// weight[start + i];
     }
 
 }
@@ -50,11 +48,7 @@ extern "C" __global__ void apply_position(float *q, float *k, float *pos_real, f
     }
 }
 
-extern "C" __device__ void softmax(float *arr, int N) {
-
-    // int i = blockIdx.x*blockDim.x+threadIdx.x;
-    // if (i != 1) {return;}
-
+extern "C" __global__ void softmax(float *arr, int N) {
     // replace this max with a CUDA reduction function.
     float max = -10.0;
     for (int idx = 0; idx < N; idx++) {
@@ -75,7 +69,29 @@ extern "C" __device__ void softmax(float *arr, int N) {
 
 }
 
-extern "C" __global__ void multi_head_attention_parallel(float *xb, float *att, float *q, float *k_cache, float *v_cache, int layer, int dim, int pos, int head_size, int seq_len, int n_heads) {
+extern "C" __global__ void update_xb(float *xb, float *att, float *q, float *k_cache, float *v_cache, int layer, int dim, int pos, int head_size, int seq_len, int n_heads) {
+    int h = blockIdx.y*blockDim.y+threadIdx.y;
+    int i = blockIdx.x*blockDim.x+threadIdx.x;
+
+    if (h < n_heads && i < head_size) {
+        int loff = layer * seq_len * dim;
+        float *q_t = q + h * head_size;
+        float *att_t = att + h * seq_len;
+        float *xb_t = xb + h * head_size;
+
+        xb_t[i] = 0;
+
+        for (int t = 0; t < pos + 1; t++) {
+            int koff = loff + t * dim + h * head_size;
+            float *v_c = v_cache + koff;
+            float a = att_t[t];
+            atomicAdd(xb_t + i, a * v_c[i]);
+        }
+
+    }
+}
+
+extern "C" __global__ void calculate_attention(float *xb, float *att, float *q, float *k_cache, float *v_cache, int layer, int dim, int pos, int head_size, int seq_len, int n_heads) {
     int h = blockIdx.x*blockDim.x+threadIdx.x;
     if (h < n_heads) {
         int loff = layer * seq_len * dim;
@@ -95,21 +111,21 @@ extern "C" __global__ void multi_head_attention_parallel(float *xb, float *att, 
         }
         softmax(att_t, pos + 1);
 
-        for (int i = 0; i < head_size; i++) {
-            xb_t[i] = 0;
-        }
-        for (int t = 0; t < pos + 1; t++) {
-            int koff = loff + t * dim + h * head_size;
-            float *v_c = v_cache + koff;
-            float a = att_t[t];
-            for (int i = 0; i < head_size; i++) {
-                xb_t[i] += a * v_c[i];
-            }
+        // for (int i = 0; i < head_size; i++) {
+        //     xb_t[i] = 0;
+        // }
+        // for (int t = 0; t < pos + 1; t++) {
+        //     int koff = loff + t * dim + h * head_size;
+        //     float *v_c = v_cache + koff;
+        //     float a = att_t[t];
+        //     for (int i = 0; i < head_size; i++) {
+        //         xb_t[i] += a * v_c[i];
+        //     }
 
-        }
+        // }
     }
-
 }
+
 
 extern "C" __global__ void array_add(float *x, float *xb, int N) {
     int i = blockIdx.x*blockDim.x+threadIdx.x;

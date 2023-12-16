@@ -36,14 +36,6 @@ pub struct GPU {
     pub gpu: Arc<CudaDevice>,
 }
 
-///
-/// Expected APIs:
-/// let g = GPU::new();
-/// g.copy_weights(); // copy transformer weights & state weights into GPU memory.
-/// g.matmul(o, a, b);
-/// let host_o = mut [X; Y];
-/// g.copy_to_host(o, host_o);
-///
 impl GPU {
     pub fn new() -> Self {
         let dev = CudaDevice::new(0).unwrap();
@@ -55,9 +47,10 @@ impl GPU {
              "copy_from_slice",
              "rmsnorm",
              "apply_position",
-             "multi_head_attention_parallel",
+             "calculate_attention",
              "array_add",
              "array_mult",
+             "update_xb",
              "sinu"]).unwrap();
         Self {
             gpu: dev,
@@ -82,8 +75,31 @@ impl GPU {
 
     pub fn multi_head_attention(&self, gpu_state: &RunStateGPU, cfg: &Config, layer: usize, pos: usize) {
         let head_size = cfg.dim / cfg.n_heads;
-        let f = self.gpu.get_func("module", "multi_head_attention_parallel").unwrap();
+        let f = self.gpu.get_func("module", "calculate_attention").unwrap();
         unsafe { f.launch(LaunchConfig::for_num_elems(cfg.n_heads as u32), (
+            gpu_state.xb,
+            gpu_state.att,
+            gpu_state.q,
+            gpu_state.key_cache,
+            gpu_state.value_cache,
+            layer,
+            cfg.dim,
+            pos,
+            head_size,
+            cfg.seq_len,
+            cfg.n_heads,
+        )) }.unwrap();
+
+        let head_size = cfg.dim / cfg.n_heads;
+        let f = self.gpu.get_func("module", "update_xb").unwrap();
+
+        let lcfg = LaunchConfig {
+            block_dim: (COL_TILE_WIDTH as u32, ROW_TILE_WIDTH as u32, 1),
+            grid_dim: ((cfg.n_heads/COL_TILE_WIDTH + 2) as u32, (head_size/ROW_TILE_WIDTH + 2)  as u32, 1),
+            shared_mem_bytes: 0,
+        };
+
+        unsafe { f.launch(lcfg, (
             gpu_state.xb,
             gpu_state.att,
             gpu_state.q,
