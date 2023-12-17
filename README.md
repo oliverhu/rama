@@ -4,11 +4,7 @@
   <img src="assets/rama.png" width="300" height="300" alt="Cute Llama">
 </p>
 
-Rama is a port of [llama.c](https://github.com/karpathy/llama2.c) in Rust, some of the code referenced another port [here](https://github.com/leo-du/llama2.rs) from [leo-du](https://github.com/leo-du). CUDA code is referenced from [cudarc](https://github.com/coreylowman/cudarc/) from [coreylowman](https://github.com/coreylowman).
-
-This repo was created to learn Rust and understand llama2 model architectures by code - debugging is quite challenging tbh. The repo is also annotated with learning materials and documentations.
-
-Plan is to catch up with the performance of llama.cpp.
+Rama is a Llama inference engine in Rust. It started as a port of [llama.c](https://github.com/karpathy/llama2.c) to grok llama architecture and Rust. So far the differential feature of Rama is its support for GPU inference.
 
 ## Usage
 ```
@@ -49,7 +45,18 @@ The little boy went to work. He built a castle out of the house. He put a moat a
 The little boy was very happy with his castle...
 ```
 
+## Attribution
+The implementation referenced another llama.c port [here](https://github.com/leo-du/llama2.rs) from [leo-du](https://github.com/leo-du), and [dfdx](https://github.com/coreylowman/dfdx) from [coreylowman](https://github.com/coreylowman).
+
+This repo was created to learn Rust and understand llama2 model architectures by code. The repo is annotated with learning materials and documentations.
+
+Plan is to catch up with the performance of llama.cpp!
+
 ## Performance
+Command used to get tok/s
+```
+cargo run --release --features gpu -- -m stories110M.bin  -t tokenizer.bin -p "once upon a time" -r 1 -s 200
+```
 Model           | Platform       | Token/s
 :---------------|:---------------|:------------
 stories15M.bin  | Ryzen 7 5700X  | 402.35 tok/s
@@ -66,6 +73,9 @@ Running llama2-7b f32 in M1 macbook is extremely slow since it requires 25GB mem
 - [x] Support chat interface.
 - [x] Add tok/s.
 - [x] Support GPU inference.
+- [x] Improve GPU performance to be at least slightly faster than CPU as baseline.
+- [ ] Support CUBLAS for matmul.
+- [ ] Support SIMD for CPU.
 - [ ] Support quantization.
 - [ ] Support flash attention.
 - [ ] Support AMD GPUs.
