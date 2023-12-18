@@ -3,7 +3,7 @@ use rayon::prelude::*;
 use super::device::*;
 pub struct CPU {}
 
-impl Device<&mut [f32], &[f32]> for CPU {
+impl Device<&mut [f32], &[f32], &[f32]> for CPU {
     fn matmul_1d(&self, o: &mut [f32], w: &[f32], x: &[f32], n: usize) {
         let le = o.len();
         let _ = self.matmul(o, w, &x, n, le, 1);

@@ -1,27 +1,24 @@
-use cudarc::driver::{DevicePtr, result::memcpy_dtoh_sync};
-use cudarc::driver::sys::CUdeviceptr;
+use cudarc::driver::CudaSlice;
 use rand::{SeedableRng, Rng};
 use rand_chacha::ChaCha20Rng;
 use crate::device::cpu::CPU;
 use crate::device::device::Device;
 use crate::device::gpu::GPU;
 use super::{ram::{RunState, TransformerWeights, TransformerCPU}, Transformer, Config};
-// size of float in bytes
-const FLOAT_SIZE: usize = 4;
 
 pub struct RunStateGPU {
-    pub x: CUdeviceptr,
-    pub xb: CUdeviceptr,
-    pub xb2: CUdeviceptr,
-    pub hb: CUdeviceptr,
-    pub hb2: CUdeviceptr,
-    pub q: CUdeviceptr,
-    pub k: CUdeviceptr,
-    pub v: CUdeviceptr,
-    pub att: CUdeviceptr,
-    pub logits: CUdeviceptr,
-    pub key_cache: CUdeviceptr,
-    pub value_cache: CUdeviceptr,
+    pub x: CudaSlice<f32>,
+    pub xb: CudaSlice<f32>,
+    pub xb2: CudaSlice<f32>,
+    pub hb: CudaSlice<f32>,
+    pub hb2: CudaSlice<f32>,
+    pub q: CudaSlice<f32>,
+    pub k: CudaSlice<f32>,
+    pub v: CudaSlice<f32>,
+    pub att: CudaSlice<f32>,
+    pub logits: CudaSlice<f32>,
+    pub key_cache: CudaSlice<f32>,
+    pub value_cache: CudaSlice<f32>,
 }
 
 impl RunStateGPU {
@@ -44,53 +41,48 @@ impl RunStateGPU {
 
     #[allow(dead_code)]
     // GPU state debug utility
-    pub fn into_state(&self, state: &mut RunState) {
-        unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.x, self.x); };
-        unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.xb, self.xb); };
-        unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.xb2, self.xb2); };
-        unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.hb, self.hb); };
-        unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.hb2, self.hb2); };
-        unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.q, self.q); };
-        unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.k, self.k); };
-        unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.v, self.v); };
-        unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.att, self.att); };
-        unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.logits, self.logits); };
-        unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.key_cache, self.key_cache); };
-        unsafe { let _ = cudarc::driver::result::memcpy_dtoh_sync(&mut state.value_cache, self.value_cache); };
-
-
+    pub fn into_state(&self, device: &GPU, state: &mut RunState) {
+        device.gpu.dtoh_sync_copy_into(&self.x, &mut state.x).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.xb, &mut state.xb).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.xb2, &mut state.xb2).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.hb, &mut state.hb).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.hb2, &mut state.hb2).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.q, &mut state.q).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.k, &mut state.k).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.v, &mut state.v).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.att, &mut state.att).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.logits, &mut state.logits).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.key_cache, &mut state.key_cache).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.value_cache, &mut state.value_cache).unwrap();
     }
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct TransformerWeightsGPU {
-    token_embedding_table: CUdeviceptr,
-    rms_att_weight: CUdeviceptr,
-    rms_ffn_weight: CUdeviceptr,
+    token_embedding_table: CudaSlice<f32>,
+    rms_att_weight: CudaSlice<f32>,
+    rms_ffn_weight: CudaSlice<f32>,
 
-    wq: CUdeviceptr,
-    wk: CUdeviceptr,
-    wv: CUdeviceptr,
-    wo: CUdeviceptr,
-    w1: CUdeviceptr,
-    w2: CUdeviceptr,
-    w3: CUdeviceptr,
+    wq: CudaSlice<f32>,
+    wk: CudaSlice<f32>,
+    wv: CudaSlice<f32>,
+    wo: CudaSlice<f32>,
+    w1: CudaSlice<f32>,
+    w2: CudaSlice<f32>,
+    w3: CudaSlice<f32>,
 
-    rms_final_weight: CUdeviceptr,
-    freq_cis_real: CUdeviceptr,
-    freq_cis_imag: CUdeviceptr,
+    rms_final_weight: CudaSlice<f32>,
+    freq_cis_real: CudaSlice<f32>,
+    freq_cis_imag: CudaSlice<f32>,
     wcls_exists: bool,
-    wcls: CUdeviceptr,
+    wcls: CudaSlice<f32>,
 }
 
 // Allocate data in GPU memory and return a pointer to the location. Leak this object since the
 // lifecycle of the GPU object is the same as the local CudaSlice object.
-fn allocate(gpu: &GPU, data: &Vec<f32>) -> CUdeviceptr {
-    let cs = gpu.gpu.htod_sync_copy(&data).unwrap();
-    let ptr = *cs.device_ptr();
-    std::mem::forget(cs);
-    ptr
+fn allocate(gpu: &GPU, data: &Vec<f32>) -> CudaSlice<f32> {
+    gpu.gpu.htod_sync_copy(&data).unwrap()
 }
 
 impl TransformerWeightsGPU {
@@ -108,7 +100,7 @@ impl TransformerWeightsGPU {
         let rms_final_weight = allocate(device, &tw.rms_final_weight);
         let freq_cis_real = allocate(device, &tw.freq_cis_real);
         let freq_cis_imag = allocate(device, &tw.freq_cis_imag);
-        let wcls: CUdeviceptr;
+        let wcls: CudaSlice<f32>;
         let mut wcls_exists= false;
 
         match &tw.wcls {
@@ -117,7 +109,7 @@ impl TransformerWeightsGPU {
                 wcls = allocate(device, &val);
                 wcls_exists = true;
             }
-            None => {wcls = token_embedding_table;},
+            None => {wcls = token_embedding_table.clone();},
         }
 
         Self {
@@ -156,7 +148,7 @@ impl Transformer for TransformerGPU {
     }
 
     fn forward(&mut self, token: usize, pos: usize) {
-        let gpu_weights = self.weights;
+        let gpu_weights = &self.weights;
         let cfg = &self.config;
         let dim = cfg.dim;
         let hidden_dim = cfg.hidden_dim;
@@ -164,67 +156,67 @@ impl Transformer for TransformerGPU {
         let gpu = &self.device;
         let gpu_state = &self.state;
 
-        self.device.copy_from_slice(gpu_weights.token_embedding_table + (token * dim * FLOAT_SIZE) as u64, gpu_state.x, dim as i32);
+        self.device.copy_from_slice(&gpu_weights.token_embedding_table.slice(token * dim..), &gpu_state.x, dim as i32);
 
-        let pos_real = gpu_weights.freq_cis_real + (pos * (head_size / 2) * FLOAT_SIZE) as u64;
-        let pos_img = gpu_weights.freq_cis_imag + (pos * (head_size / 2) * FLOAT_SIZE) as u64;
+        let pos_real = gpu_weights.freq_cis_real.slice(pos * (head_size / 2)..);
+        let pos_img = gpu_weights.freq_cis_imag.slice(pos * (head_size / 2)..);
 
 
         for layer in 0..cfg.n_layers {
 
-            gpu.rmsnorm(gpu_state.xb, gpu_state.x, gpu_weights.rms_att_weight + (layer * dim * FLOAT_SIZE) as u64, dim as i32);
+            gpu.rmsnorm(&gpu_state.xb, &gpu_state.x, &gpu_weights.rms_att_weight.slice(layer * dim..), dim as i32);
 
-            gpu.matmul(gpu_state.q, gpu_weights.wq + (layer * dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, dim, 1);
+            gpu.matmul(&gpu_state.q, &gpu_weights.wq.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
 
-            gpu.matmul(gpu_state.k, gpu_weights.wk + (layer * dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, dim, 1);
+            gpu.matmul(&gpu_state.k, &gpu_weights.wk.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
 
-            gpu.matmul(gpu_state.v, gpu_weights.wv + (layer * dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, dim, 1);
+            gpu.matmul(&gpu_state.v, &gpu_weights.wv.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
 
             for h in 0..cfg.n_heads {
 
-                let q = gpu_state.q + (h * head_size * FLOAT_SIZE) as u64;
-                let k = gpu_state.k + (h * head_size * FLOAT_SIZE) as u64;
-                gpu.apply_position(q, k, pos_real, pos_img, cfg.n_heads as i32, head_size as i32);
+                let q = &gpu_state.q.slice(h * head_size..);
+                let k = &gpu_state.k.slice(h * head_size..);
+                gpu.apply_position(q, k, &pos_real, &pos_img, cfg.n_heads as i32, head_size as i32);
             }
 
             // -- %%
             let lo = layer * cfg.seq_len * dim;
-            gpu.copy_from_slice(gpu_state.k, gpu_state.key_cache + ((lo + pos * dim) * FLOAT_SIZE) as u64, dim as i32);
-            gpu.copy_from_slice(gpu_state.v, gpu_state.value_cache + ((lo + pos * dim) * FLOAT_SIZE) as u64, dim as i32);
+            gpu.copy_from_slice(&gpu_state.k, &gpu_state.key_cache.slice(lo + pos * dim..), dim as i32);
+            gpu.copy_from_slice(&gpu_state.v, &gpu_state.value_cache.slice(lo + pos * dim..), dim as i32);
             // self.state.into_state(&mut self._cpu_state);
             gpu.multi_head_attention(&gpu_state, &cfg, layer, pos);
             // self.state.into_state(&mut self._cpu_state);
 
-            gpu.matmul(gpu_state.xb2, gpu_weights.wo + (layer * dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, dim, 1);
+            gpu.matmul(&gpu_state.xb2, &gpu_weights.wo.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
 
-            gpu.array_add(gpu_state.x, gpu_state.xb2, dim);
+            gpu.array_add(&gpu_state.x, &gpu_state.xb2, dim);
 
-            gpu.rmsnorm(gpu_state.xb, gpu_state.x, gpu_weights.rms_ffn_weight + (layer * dim * FLOAT_SIZE) as u64, dim as i32);
+            gpu.rmsnorm(&gpu_state.xb, &gpu_state.x, &gpu_weights.rms_ffn_weight.slice(layer * dim..), dim as i32);
 
 
 
-            gpu.matmul(gpu_state.hb, gpu_weights.w1 + (layer * hidden_dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, hidden_dim, 1);
-            gpu.matmul(gpu_state.hb2, gpu_weights.w3 + (layer * hidden_dim * dim * FLOAT_SIZE) as u64, gpu_state.xb, dim, hidden_dim, 1);
+            gpu.matmul(&gpu_state.hb, &gpu_weights.w1.slice(layer * hidden_dim * dim..), &gpu_state.xb, dim, hidden_dim, 1);
+            gpu.matmul(&gpu_state.hb2, &gpu_weights.w3.slice(layer * hidden_dim * dim..), &gpu_state.xb, dim, hidden_dim, 1);
 
             //---
-            gpu.sinu(gpu_state.hb, hidden_dim as i32);
+            gpu.sinu(&gpu_state.hb, hidden_dim as i32);
 
 
-            gpu.array_mult(gpu_state.hb, gpu_state.hb2, hidden_dim as i32);
+            gpu.array_mult(&gpu_state.hb, &gpu_state.hb2, hidden_dim as i32);
 
 
-            gpu.matmul(gpu_state.xb, gpu_weights.w2 + (layer * dim * hidden_dim * FLOAT_SIZE) as u64, gpu_state.hb, hidden_dim, dim, 1);
+            gpu.matmul(&gpu_state.xb, &gpu_weights.w2.slice(layer * dim * hidden_dim..), &gpu_state.hb, hidden_dim, dim, 1);
 
-            gpu.array_add(gpu_state.x, gpu_state.xb, dim);
+            gpu.array_add(&gpu_state.x, &gpu_state.xb, dim);
 
         }
 
 
-        gpu.copy_from_slice(gpu_state.x, gpu_state.xb, dim as i32);
+        gpu.copy_from_slice(&gpu_state.x, &gpu_state.xb, dim as i32);
 
-        gpu.rmsnorm(gpu_state.x, gpu_state.xb, gpu_weights.rms_final_weight, dim as i32);
+        gpu.rmsnorm(&gpu_state.x, &gpu_state.xb, &gpu_weights.rms_final_weight, dim as i32);
 
-        gpu.matmul(gpu_state.logits, gpu_weights.wcls, gpu_state.x, dim, cfg.vocab_size, 1);
+        gpu.matmul(&gpu_state.logits, &gpu_weights.wcls, &gpu_state.x, dim, cfg.vocab_size, 1);
 
     }
 
@@ -248,8 +240,9 @@ impl Transformer for TransformerGPU {
         let next;
         let rng_seed = 10;
         let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
-        let mut logits = vec![0.0f32; self.config.vocab_size];
-        unsafe { let _ = memcpy_dtoh_sync(&mut logits, self.state.logits); };
+        // let mut logits = vec![0.0f32; self.config.vocab_size];
+        let mut logits = self.device.gpu.sync_reclaim(self.state.logits.clone()).unwrap();
+        // unsafe { let _ = memcpy_dtoh_sync(&mut logits, self.state.logits); };
         if temperature == 0.0 {
             // greedy decoding, choose argmax
             next = logits.iter().enumerate()
