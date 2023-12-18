@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use cudarc::cublas::CudaBlas;
+use cudarc::cublas::sys::cublasOperation_t;
 use cudarc::driver::sys::CUdeviceptr;
 use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::compile_ptx;
@@ -8,6 +10,10 @@ use crate::transformer::Config;
 use crate::transformer::hbm::RunStateGPU;
 
 use super::device::Device;
+
+// const TRANS: cublasOperation_t = cublasOperation_t::CUBLAS_OP_T;
+#[allow(dead_code)]
+const NO_TRANS: cublasOperation_t = cublasOperation_t::CUBLAS_OP_N;
 
 ///
 /// Brief Introduction to CUDA Programming
@@ -34,6 +40,7 @@ const COL_TILE_WIDTH: usize = 32;
 pub struct GPU {
     // Reference to the GPU device.
     pub gpu: Arc<CudaDevice>,
+    pub blas: Arc<CudaBlas>,
 }
 
 impl GPU {
@@ -52,8 +59,10 @@ impl GPU {
              "array_mult",
              "update_xb",
              "sinu"]).unwrap();
+        let blas = Arc::new(CudaBlas::new(dev.clone()).unwrap());
         Self {
             gpu: dev,
+            blas: blas,
         }
     }
 
@@ -160,19 +169,39 @@ impl Device<CUdeviceptr, CUdeviceptr> for GPU {
 #[cfg(test)]
 mod tests {
 
+    use cudarc::cublas::{GemmConfig, Gemm};
+
     use super::*;
 
     #[test]
-    fn test_test_call_another() {
-        let a_host = [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
-
+    fn test_blas() {
         let gpu = GPU::new();
-        let f = gpu.gpu.get_func("module", "test_call_another").unwrap();
-        let a_dev = gpu.gpu.htod_sync_copy(&a_host).unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems(6), (&a_dev, 4,)) }.unwrap();
-        let b_host = gpu.gpu.sync_reclaim(a_dev).unwrap();
-        let b_host_eval = [100.0f32, 100.0, 100.0, 100.0, 5.0, 6.0];
-        println!("{:?}", b_host);
-        assert_eq!(b_host, b_host_eval)
+        let blas_cfg: GemmConfig<f32> = GemmConfig {
+            transa: NO_TRANS,
+            transb: NO_TRANS,
+            m: 2,
+            n: 4,
+            k: 3,
+            alpha: 1.0,
+            lda: 2,
+            ldb: 3,
+            beta: 0.0,
+            ldc: 2,
+        };
+        let r = vec![1.0f32, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0];
+        let l = vec![3.0f32, 3.0, 3.0, 3.0, 5.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0];
+        let o = vec![1.0f32; 8];
+        let a_dev = gpu.gpu.htod_sync_copy(&r).unwrap();
+
+        let b_dev = gpu.gpu.htod_sync_copy(&l).unwrap();
+        let mut c_dev = gpu.gpu.htod_sync_copy(&o).unwrap();
+
+        unsafe {
+            let _ = gpu.blas.gemm(blas_cfg, &a_dev, &b_dev, &mut c_dev);
+            // let _ = gpu.blas.gemm(blas_cfg, ptr, &b_dev, &mut c_dev);
+        }
+        let ar = gpu.gpu.sync_reclaim(c_dev);
+        // print!("{:?}", ar);
+        assert_eq!(ar.unwrap(), [15.0, 18.0, 19.0, 22.0, 15.0, 18.0, 15.0, 18.0]);
     }
 }
