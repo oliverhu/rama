@@ -75,7 +75,7 @@ Running llama2-7b f32 in M1 macbook is extremely slow since it requires 25GB mem
 - [x] Add tok/s.
 - [x] Support GPU inference.
 - [x] Improve GPU performance to be at least slightly faster than CPU as baseline.
-- [ ] Support CUBLAS for matmul.
+- [x] Support CUBLAS for matmul.
 - [ ] Support SIMD for CPU.
 - [ ] Support quantization.
 - [ ] Support flash attention.
