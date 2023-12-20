@@ -17,7 +17,7 @@ byteorder = { version = "1.5" }
 rand_chacha ={ version = "*" }
 
 [features]
-# default = ["gpu"]
+default = ["gpu"]
 gpu = [
     "dep:cudarc"
 ]
