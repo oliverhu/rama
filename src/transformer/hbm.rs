@@ -154,7 +154,7 @@ impl Transformer for TransformerGPU {
         let hidden_dim = cfg.hidden_dim;
         let head_size = dim / cfg.n_heads;
         let gpu = &self.device;
-        let gpu_state = &self.state;
+        let gpu_state = &mut self.state;
 
         self.device.copy_from_slice(&gpu_weights.token_embedding_table.slice(token * dim..), &gpu_state.x, dim as i32);
 
@@ -166,11 +166,13 @@ impl Transformer for TransformerGPU {
 
             gpu.rmsnorm(&gpu_state.xb, &gpu_state.x, &gpu_weights.rms_att_weight.slice(layer * dim..), dim as i32);
 
-            gpu.matmul(&gpu_state.q, &gpu_weights.wq.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
+            gpu.matmul_cublas(&mut gpu_state.q, &gpu_weights.wq.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
+            // gpu.matmul_cublas(&mut gpu_state.q, &gpu_weights.wq.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
+            gpu.matmul_cublas(&mut gpu_state.q, &gpu_weights.wq.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
 
-            gpu.matmul(&gpu_state.k, &gpu_weights.wk.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
+            gpu.matmul_cublas(&mut gpu_state.k, &gpu_weights.wk.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
 
-            gpu.matmul(&gpu_state.v, &gpu_weights.wv.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
+            gpu.matmul_cublas(&mut gpu_state.v, &gpu_weights.wv.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
 
             for h in 0..cfg.n_heads {
 
@@ -187,7 +189,7 @@ impl Transformer for TransformerGPU {
             gpu.multi_head_attention(&gpu_state, &cfg, layer, pos);
             // self.state.into_state(&mut self._cpu_state);
 
-            gpu.matmul(&gpu_state.xb2, &gpu_weights.wo.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
+            gpu.matmul_cublas(&mut gpu_state.xb2, &gpu_weights.wo.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
 
             gpu.array_add(&gpu_state.x, &gpu_state.xb2, dim);
 
@@ -195,8 +197,8 @@ impl Transformer for TransformerGPU {
 
 
 
-            gpu.matmul(&gpu_state.hb, &gpu_weights.w1.slice(layer * hidden_dim * dim..), &gpu_state.xb, dim, hidden_dim, 1);
-            gpu.matmul(&gpu_state.hb2, &gpu_weights.w3.slice(layer * hidden_dim * dim..), &gpu_state.xb, dim, hidden_dim, 1);
+            gpu.matmul_cublas(&mut gpu_state.hb, &gpu_weights.w1.slice(layer * hidden_dim * dim..), &gpu_state.xb, dim, hidden_dim, 1);
+            gpu.matmul_cublas(&mut gpu_state.hb2, &gpu_weights.w3.slice(layer * hidden_dim * dim..), &gpu_state.xb, dim, hidden_dim, 1);
 
             //---
             gpu.sinu(&gpu_state.hb, hidden_dim as i32);
@@ -205,7 +207,7 @@ impl Transformer for TransformerGPU {
             gpu.array_mult(&gpu_state.hb, &gpu_state.hb2, hidden_dim as i32);
 
 
-            gpu.matmul(&gpu_state.xb, &gpu_weights.w2.slice(layer * dim * hidden_dim..), &gpu_state.hb, hidden_dim, dim, 1);
+            gpu.matmul_cublas(&mut gpu_state.xb, &gpu_weights.w2.slice(layer * dim * hidden_dim..), &gpu_state.hb, hidden_dim, dim, 1);
 
             gpu.array_add(&gpu_state.x, &gpu_state.xb, dim);
 
@@ -216,7 +218,7 @@ impl Transformer for TransformerGPU {
 
         gpu.rmsnorm(&gpu_state.x, &gpu_state.xb, &gpu_weights.rms_final_weight, dim as i32);
 
-        gpu.matmul(&gpu_state.logits, &gpu_weights.wcls, &gpu_state.x, dim, cfg.vocab_size, 1);
+        gpu.matmul_cublas(&mut gpu_state.logits, &gpu_weights.wcls, &gpu_state.x, dim, cfg.vocab_size, 1);
 
     }
 
