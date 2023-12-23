@@ -1,5 +1,5 @@
 use rayon::prelude::*;
-
+use wide::f32x4;
 use super::device::*;
 pub struct CPU {}
 
@@ -32,11 +32,13 @@ impl Device<&mut [f32], &[f32], &[f32]> for CPU {
             |(idx, o)| {
                 let r = idx / o_cols;
                 let c = idx % o_cols;
-                let mut v = 0.0;
-                for k in 0..width {
-                    v += a[r * width + k] * b[k * o_cols + c];
+                let mut v = f32x4::splat(0.0);
+                for k in (0..width).step_by(4) {
+                    let a_wide = f32x4::from(&a[r * width + k..r * width + k + 4]);
+                    let b_wide = f32x4::from(&b[k * o_cols + c..k * o_cols + c + 4]);
+                    v += a_wide * b_wide;
                 }
-                *o = v;
+                *o = v.reduce_add();
 
             }
 
