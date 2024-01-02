@@ -1,5 +1,5 @@
 use rayon::prelude::*;
-
+use wide::f32x4;
 use super::device::*;
 pub struct CPU {}
 
@@ -32,11 +32,15 @@ impl Device<&mut [f32], &[f32], &[f32]> for CPU {
             |(idx, o)| {
                 let r = idx / o_cols;
                 let c = idx % o_cols;
-                let mut v = 0.0;
-                for k in 0..width {
-                    v += a[r * width + k] * b[k * o_cols + c];
+                let mut v = f32x4::splat(0.0);
+                for k in (0..width).step_by(4) {
+                    let a_wide = f32x4::from(&a[r * width + k..r * width + k + 4]);
+                    let b_values = [b[k * o_cols + c], b[(k + 1) * o_cols + c], b[(k + 2) * o_cols + c], b[(k + 3) * o_cols + c]];
+                    let b_wide = f32x4::from(&b_values[..]);
+                    v += a_wide * b_wide;
                 }
-                *o = v;
+                // println!("v: {:?}", v);
+                *o = v.reduce_add();
 
             }
 
@@ -50,13 +54,11 @@ mod tests {
 
     #[test]
     fn test_matrix_mul() {
-        let a_host = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let b_host = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let a_host = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 0.0, 0.0]; // padding with zeros
+        let b_host = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 0.0, 0.0]; // padding with zeros
         let mut c_host = vec![0.0f32; 4];
         let cpu = CPU {};
         let _ = &cpu.matmul(&mut c_host, &a_host, &b_host, 3, 2, 2);
         assert_eq!(c_host, [22.0, 28.0, 49.0, 64.0]);
-
     }
-
 }
