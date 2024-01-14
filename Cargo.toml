@@ -15,12 +15,11 @@ rayon ={ version = "1.8" }
 rand ={ version = "*" }
 byteorder = { version = "1.5" }
 rand_chacha ={ version = "*" }
+wide = "0.7.13"
 
 [features]
 # default = ["gpu"]
-gpu = [
-    "dep:cudarc"
-]
+gpu = ["dep:cudarc"]
 
 [dependencies.cudarc]
 version = "*"
