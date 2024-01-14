@@ -4,7 +4,6 @@ use crate::transformer::{CPUView, CPUMutView};
 
 pub struct CPU {}
 
-// impl Device<&CPUView, &CPUView, &CPUView> for CPU {
 impl CPU {
     pub fn matmul_1d(&self, o: &mut CPUMutView, w: &CPUView, x: &CPUView, n: usize) {
         let le = o.as_mut().len();

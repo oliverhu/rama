@@ -140,7 +140,7 @@ impl Transformer for TransformerCPU {
                 }
 
             });
-            self.device.matmul_1d(&mut state.xb2.as_mut_slice(), &weights.wo.slice(layer * dim * dim..(layer + 1) * dim * dim), &state.x.as_slice(), dim);
+            self.device.matmul_1d(&mut state.xb2.as_mut_slice(), &weights.wo.slice(layer * dim * dim..(layer + 1) * dim * dim), &state.xb.as_slice(), dim);
 
             state.x.as_mut().iter_mut().zip(state.xb2.as_ref().iter()).for_each(|(a, b)| *a += *b);
 
