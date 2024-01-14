@@ -142,12 +142,13 @@ impl GPU {
 
 }
 
-impl<MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr> Device<MT, T, T2> for GPU where  {
-    fn matmul_1d(&self, o: MT, w: T, x: T2, n: usize) {
+// impl<MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr> Device<MT, T, T2> for GPU where  {
+impl GPU {
+    fn matmul_1d<MT, T, T2>(&self, o: MT, w: T, x: T2, n: usize) where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr{
         self.matmul(o, w, x, n, n, 1)
     }
 
-    fn matmul(&self, o: MT, a: T, b: T2, width: usize, o_rows: usize, o_cols: usize) {
+    fn matmul<MT, T, T2>(&self, o: MT, a: T, b: T2, width: usize, o_rows: usize, o_cols: usize)  where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr{
         let f = self.gpu.get_func("module", "matmul").unwrap();
         let cfg = LaunchConfig {
             block_dim: (COL_TILE_WIDTH as u32, ROW_TILE_WIDTH as u32, 1),
@@ -157,12 +158,12 @@ impl<MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr> Device<MT, T, T2> for GPU wh
         unsafe { f.launch(cfg, (a, b, o, width, o_rows, o_cols)) }.unwrap();
     }
 
-    fn rmsnorm(&self, o: MT, x: T, w: T2, n: usize) {
-        let f = self.gpu.get_func("module", "rmsnorm").unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (o, x, w, n,)) }.unwrap();
-    }
+    // fn rmsnorm<MT, T, T2>(&self, o: MT, x: T, w: T2, n: usize) {
+    //     let f = self.gpu.get_func("module", "rmsnorm").unwrap();
+    //     unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (o, x, w, n,)) }.unwrap();
+    // }
 
-    fn softmax(&self, arr: MT, size: usize) {
+    fn softmax<MT, T, T2>(&self, arr: MT, size: usize) where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr {
         let f = self.gpu.get_func("module", "softmax").unwrap();
         unsafe { f.launch(LaunchConfig::for_num_elems(size as u32), (arr, size)) }.unwrap();
     }

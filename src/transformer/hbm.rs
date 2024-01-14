@@ -24,36 +24,36 @@ pub struct RunStateGPU {
 impl RunStateGPU {
     pub fn from_state(state: &RunState, device: &GPU) -> Self {
         Self {
-            x: allocate(device, &state.x),
-            xb: allocate(device, &state.xb),
-            xb2: allocate(device, &state.xb2),
-            hb: allocate(device, &state.hb),
-            hb2: allocate(device, &state.hb2),
-            q: allocate(device, &state.q),
-            k: allocate(device, &state.k),
-            v: allocate(device, &state.v),
-            att: allocate(device, &state.att),
-            logits: allocate(device, &state.logits),
-            key_cache: allocate(device, &state.key_cache),
-            value_cache: allocate(device, &state.value_cache),
+            x: allocate(device, &state.x.data),
+            xb: allocate(device, &state.xb.data),
+            xb2: allocate(device, &state.xb2.data),
+            hb: allocate(device, &state.hb.data),
+            hb2: allocate(device, &state.hb2.data),
+            q: allocate(device, &state.q.data),
+            k: allocate(device, &state.k.data),
+            v: allocate(device, &state.v.data),
+            att: allocate(device, &state.att.data),
+            logits: allocate(device, &state.logits.data),
+            key_cache: allocate(device, &state.key_cache.data),
+            value_cache: allocate(device, &state.value_cache.data),
         }
     }
 
     #[allow(dead_code)]
     // GPU state debug utility
     pub fn into_state(&self, device: &GPU, state: &mut RunState) {
-        device.gpu.dtoh_sync_copy_into(&self.x, &mut state.x).unwrap();
-        device.gpu.dtoh_sync_copy_into(&self.xb, &mut state.xb).unwrap();
-        device.gpu.dtoh_sync_copy_into(&self.xb2, &mut state.xb2).unwrap();
-        device.gpu.dtoh_sync_copy_into(&self.hb, &mut state.hb).unwrap();
-        device.gpu.dtoh_sync_copy_into(&self.hb2, &mut state.hb2).unwrap();
-        device.gpu.dtoh_sync_copy_into(&self.q, &mut state.q).unwrap();
-        device.gpu.dtoh_sync_copy_into(&self.k, &mut state.k).unwrap();
-        device.gpu.dtoh_sync_copy_into(&self.v, &mut state.v).unwrap();
-        device.gpu.dtoh_sync_copy_into(&self.att, &mut state.att).unwrap();
-        device.gpu.dtoh_sync_copy_into(&self.logits, &mut state.logits).unwrap();
-        device.gpu.dtoh_sync_copy_into(&self.key_cache, &mut state.key_cache).unwrap();
-        device.gpu.dtoh_sync_copy_into(&self.value_cache, &mut state.value_cache).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.x, &mut state.x.data).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.xb, &mut state.xb.data).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.xb2, &mut state.xb2.data).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.hb, &mut state.hb.data).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.hb2, &mut state.hb2.data).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.q, &mut state.q.data).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.k, &mut state.k.data).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.v, &mut state.v.data).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.att, &mut state.att.data).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.logits, &mut state.logits.data).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.key_cache, &mut state.key_cache.data).unwrap();
+        device.gpu.dtoh_sync_copy_into(&self.value_cache, &mut state.value_cache.data).unwrap();
     }
 }
 
@@ -87,26 +87,26 @@ fn allocate(gpu: &GPU, data: &Vec<f32>) -> CudaSlice<f32> {
 
 impl TransformerWeightsGPU {
     pub fn from_weight(tw: &TransformerWeights, device: &GPU) -> Self {
-        let token_embedding_table = allocate(device, &tw.token_embedding_table);
-        let rms_att_weight = allocate(device, &tw.rms_att_weight);
-        let rms_ffn_weight = allocate(device, &tw.rms_ffn_weight);
-        let wq = allocate(device, &tw.wq);
-        let wk = allocate(device, &tw.wk);
-        let wv = allocate(device, &tw.wv);
-        let wo = allocate(device, &tw.wo);
-        let w1 = allocate(device, &tw.w1);
-        let w2 = allocate(device, &tw.w2);
-        let w3 = allocate(device, &tw.w3);
-        let rms_final_weight = allocate(device, &tw.rms_final_weight);
-        let freq_cis_real = allocate(device, &tw.freq_cis_real);
-        let freq_cis_imag = allocate(device, &tw.freq_cis_imag);
+        let token_embedding_table = allocate(device, &tw.token_embedding_table.data);
+        let rms_att_weight = allocate(device, &tw.rms_att_weight.data);
+        let rms_ffn_weight = allocate(device, &tw.rms_ffn_weight.data);
+        let wq = allocate(device, &tw.wq.data);
+        let wk = allocate(device, &tw.wk.data);
+        let wv = allocate(device, &tw.wv.data);
+        let wo = allocate(device, &tw.wo.data);
+        let w1 = allocate(device, &tw.w1.data);
+        let w2 = allocate(device, &tw.w2.data);
+        let w3 = allocate(device, &tw.w3.data);
+        let rms_final_weight = allocate(device, &tw.rms_final_weight.data);
+        let freq_cis_real = allocate(device, &tw.freq_cis_real.data);
+        let freq_cis_imag = allocate(device, &tw.freq_cis_imag.data);
         let wcls: CudaSlice<f32>;
         let mut wcls_exists= false;
 
         match &tw.wcls {
             Some(val) =>
             {
-                wcls = allocate(device, &val);
+                wcls = allocate(device, &val.data);
                 wcls_exists = true;
             }
             None => {wcls = token_embedding_table.clone();},
@@ -257,7 +257,7 @@ impl Transformer for TransformerGPU {
             }
             // compute probabilities
             let cpu = CPU {};
-            cpu.softmax(&mut logits, 0);
+            cpu.softmax_num(&mut logits, 0);
             // next = sample(&transformer.state.logits, &mut rng);
             next = sample_top_q(&logits, self.config.vocab_size, temperature, &mut rng);
 
