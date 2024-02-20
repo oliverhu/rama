@@ -2,9 +2,8 @@
 pub mod hbm;
 pub mod ram;
 
-use std::{fs::File, io::BufReader, ops::Range};
+use std::{fs::File, io::BufReader, ops::{Range, RangeBounds, Bound}};
 use crate::utils::read::*;
-
 use self::ram::RunState;
 
 // TODO: probably rename CPU/GPU to CPU/GPU "storage" later. The only difference
@@ -27,11 +26,30 @@ pub struct MutView<'a, MT> where MT: Storage {
     pub range: Range<usize>,
 }
 
+pub fn range_from(range: impl RangeBounds<usize>, max_len: usize) -> Range<usize> {
+    let start = range.start_bound();
+    let end = range.end_bound();
+
+    match (start, end) {
+        (Bound::Included(s), Bound::Included(e)) => *s..*e + 1,
+        (Bound::Included(s), Bound::Excluded(e)) => *s..*e,
+        (Bound::Included(s), Bound::Unbounded) => *s..max_len,
+        (Bound::Excluded(s), Bound::Included(e)) => *s + 1..*e + 1,
+        (Bound::Excluded(s), Bound::Excluded(e)) => *s + 1..*e,
+        (Bound::Excluded(s), Bound::Unbounded) => *s + 1..max_len,
+        (Bound::Unbounded, Bound::Included(e)) => 0..max_len,
+        (Bound::Unbounded, Bound::Excluded(e)) => 0..max_len - 1,
+        (Bound::Unbounded, Bound::Unbounded) => 0..max_len,
+    }
+}
+
 impl<'a, T: Storage> View<'a, T> {
-    pub fn slice(&self, range: Range<usize>) -> View<'_, T> {
+    pub fn slice(&self, range: impl RangeBounds<usize>) -> View<'_, T> {
+        let r = range_from(range, self.data.len());
+
         View {
             data: self.data,
-            range,
+            range: r,
         }
     }
 
@@ -54,17 +72,19 @@ impl<'a, MT: Storage> MutView<'a, MT> {
             range: self.range.clone(),
         }
     }
-    pub fn slice(&self, range: Range<usize>) -> View<'_, MT> {
+    pub fn slice(&self, range: impl RangeBounds<usize>) -> View<'_, MT> {
+        let r = range_from(range, self.data.len());
         View {
             data: self.data,
-            range,
+            range: r,
         }
     }
 
-    pub fn mut_slice(&mut self, range: Range<usize>) -> MutView<'_, MT> {
+    pub fn mut_slice(&mut self, range: impl RangeBounds<usize>) -> MutView<'_, MT> {
+        let r = range_from(range, self.data.len());
         MutView {
             data: self.data,
-            range,
+            range: r,
         }
     }
 

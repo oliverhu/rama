@@ -140,11 +140,10 @@ impl GPU {
         )) }.unwrap();
 
     }
-
-    pub fn copy_from_slice<S: DeviceRepr, D: DeviceRepr>(&self, src: S, dest: D, n: i32)
-    {
+    pub fn copy_from_slice(&self, target: &mut MutView<'_, CudaSlice<f32>>, source: &View<'_, CudaSlice<f32>>, n: usize) {
+    // pub fn copy_from_slice<S: DeviceRepr, D: DeviceRepr>(&self, src: S, dest: D, n: i32) {
         let f = self.gpu.get_func("module", "copy_from_slice").unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (src, dest, n,)).unwrap(); };
+        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&source.cudaview(), &target.cudaview(), n,)).unwrap(); };
     }
 
     pub fn rmsnorm(&self, o: &mut MutView<'_, CudaSlice<f32>>, x: &View<'_, CudaSlice<f32>>,

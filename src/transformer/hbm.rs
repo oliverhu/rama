@@ -155,10 +155,8 @@ pub fn forward<'a>(cfg: &Config, wv: &TransformerWeightsView<'a, CudaSlice<f32>>
     let dim = cfg.dim;
     let hidden_dim = cfg.hidden_dim;
     let head_size = dim / cfg.n_heads;
-    let gpu = device;
-    let gpu_state = rsv;
 
-    device.copy_from_slice(&gpu_weights.token_embedding_table.slice(token * dim..), &gpu_state.x, dim as i32);
+    device.copy_from_slice(&mut gpu_weights.token_embedding_table.slice(token * dim..), &rsv.x, dim);
 
     let pos_real = gpu_weights.freq_cis_real.slice(pos * (head_size / 2)..);
     let pos_img = gpu_weights.freq_cis_imag.slice(pos * (head_size / 2)..);
@@ -166,61 +164,61 @@ pub fn forward<'a>(cfg: &Config, wv: &TransformerWeightsView<'a, CudaSlice<f32>>
 
     for layer in 0..cfg.n_layers {
 
-        gpu.rmsnorm(&gpu_state.xb, &gpu_state.x, &gpu_weights.rms_att_weight.slice(layer * dim..), dim as i32);
+        gpu.rmsnorm(&rsv.xb, &rsv.x, &gpu_weights.rms_att_weight.slice(layer * dim..), dim as i32);
 
-        gpu.matmul_cublas(&mut gpu_state.q, &gpu_weights.wq.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
-        // gpu.matmul_cublas(&mut gpu_state.q, &gpu_weights.wq.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
-        gpu.matmul_cublas(&mut gpu_state.q, &gpu_weights.wq.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
+        device.matmul_cublas(&mut rsv.q, &gpu_weights.wq.slice(layer * dim * dim..), &rsv.xb, dim, dim, 1);
+        // device.matmul_cublas(&mut rsv.q, &gpu_weights.wq.slice(layer * dim * dim..), &rsv.xb, dim, dim, 1);
+        device.matmul_cublas(&mut rsv.q, &gpu_weights.wq.slice(layer * dim * dim..), &rsv.xb, dim, dim, 1);
 
-        gpu.matmul_cublas(&mut gpu_state.k, &gpu_weights.wk.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
+        device.matmul_cublas(&mut rsv.k, &gpu_weights.wk.slice(layer * dim * dim..), &rsv.xb, dim, dim, 1);
 
-        gpu.matmul_cublas(&mut gpu_state.v, &gpu_weights.wv.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
+        device.matmul_cublas(&mut rsv.v, &gpu_weights.wv.slice(layer * dim * dim..), &rsv.xb, dim, dim, 1);
 
         for h in 0..cfg.n_heads {
 
-            let q = &gpu_state.q.slice(h * head_size..);
-            let k = &gpu_state.k.slice(h * head_size..);
-            gpu.apply_position(q, k, &pos_real, &pos_img, cfg.n_heads as i32, head_size as i32);
+            let q = &rsv.q.slice(h * head_size..);
+            let k = &rsv.k.slice(h * head_size..);
+            device.apply_position(q, k, &pos_real, &pos_img, cfg.n_heads as i32, head_size as i32);
         }
 
         // -- %%
         let lo = layer * cfg.seq_len * dim;
-        gpu.copy_from_slice(&gpu_state.k, &gpu_state.key_cache.slice(lo + pos * dim..), dim as i32);
-        gpu.copy_from_slice(&gpu_state.v, &gpu_state.value_cache.slice(lo + pos * dim..), dim as i32);
+        device.copy_from_slice(&rsv.k, &rsv.key_cache.slice(lo + pos * dim..), dim as i32);
+        device.copy_from_slice(&rsv.v, &rsv.value_cache.slice(lo + pos * dim..), dim as i32);
         // self.state.into_state(&mut self._cpu_state);
-        gpu.multi_head_attention(&gpu_state, &cfg, layer, pos);
+        device.multi_head_attention(&gpu_state, &cfg, layer, pos);
         // self.state.into_state(&mut self._cpu_state);
 
-        gpu.matmul_cublas(&mut gpu_state.xb2, &gpu_weights.wo.slice(layer * dim * dim..), &gpu_state.xb, dim, dim, 1);
+        device.matmul_cublas(&mut rsv.xb2, &gpu_weights.wo.slice(layer * dim * dim..), &rsv.xb, dim, dim, 1);
 
-        gpu.array_add(&gpu_state.x, &gpu_state.xb2, dim);
+        device.array_add(&rsv.x, &rsv.xb2, dim);
 
-        gpu.rmsnorm(&gpu_state.xb, &gpu_state.x, &gpu_weights.rms_ffn_weight.slice(layer * dim..), dim as i32);
+        device.rmsnorm(&rsv.xb, &rsv.x, &gpu_weights.rms_ffn_weight.slice(layer * dim..), dim as i32);
 
 
 
-        gpu.matmul_cublas(&mut gpu_state.hb, &gpu_weights.w1.slice(layer * hidden_dim * dim..), &gpu_state.xb, dim, hidden_dim, 1);
-        gpu.matmul_cublas(&mut gpu_state.hb2, &gpu_weights.w3.slice(layer * hidden_dim * dim..), &gpu_state.xb, dim, hidden_dim, 1);
+        device.matmul_cublas(&mut rsv.hb, &gpu_weights.w1.slice(layer * hidden_dim * dim..), &rsv.xb, dim, hidden_dim, 1);
+        device.matmul_cublas(&mut rsv.hb2, &gpu_weights.w3.slice(layer * hidden_dim * dim..), &rsv.xb, dim, hidden_dim, 1);
 
         //---
-        gpu.sinu(&gpu_state.hb, hidden_dim as i32);
+        device.sinu(&rsv.hb, hidden_dim as i32);
 
 
-        gpu.array_mult(&gpu_state.hb, &gpu_state.hb2, hidden_dim as i32);
+        device.array_mult(&rsv.hb, &rsv.hb2, hidden_dim as i32);
 
 
-        gpu.matmul_cublas(&mut gpu_state.xb, &gpu_weights.w2.slice(layer * dim * hidden_dim..), &gpu_state.hb, hidden_dim, dim, 1);
+        device.matmul_cublas(&mut rsv.xb, &gpu_weights.w2.slice(layer * dim * hidden_dim..), &rsv.hb, hidden_dim, dim, 1);
 
-        gpu.array_add(&gpu_state.x, &gpu_state.xb, dim);
+        device.array_add(&rsv.x, &rsv.xb, dim);
 
     }
 
 
-    gpu.copy_from_slice(&gpu_state.x, &gpu_state.xb, dim as i32);
+    device.copy_from_slice(&rsv.x, &rsv.xb, dim as i32);
 
-    gpu.rmsnorm(&gpu_state.x, &gpu_state.xb, &gpu_weights.rms_final_weight, dim as i32);
+    device.rmsnorm(&rsv.x, &rsv.xb, &gpu_weights.rms_final_weight, dim as i32);
 
-    gpu.matmul_cublas(&mut gpu_state.logits, &gpu_weights.wcls, &gpu_state.x, dim, cfg.vocab_size, 1);
+    device.matmul_cublas(&mut rsv.logits, &gpu_weights.wcls, &rsv.x, dim, cfg.vocab_size, 1);
 
 }
 
