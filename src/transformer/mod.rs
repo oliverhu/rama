@@ -2,7 +2,7 @@
 pub mod hbm;
 pub mod ram;
 
-use std::{io::BufReader, fs::File, ops::Range};
+use std::{fs::File, io::BufReader, ops::Range};
 use crate::utils::read::*;
 
 use self::ram::RunState;
@@ -10,162 +10,101 @@ use self::ram::RunState;
 // TODO: probably rename CPU/GPU to CPU/GPU "storage" later. The only difference
 // here is where we store the weights, CPU RAM or GPU HBM.
 pub trait Transformer {
-    fn forward(&mut self, token: usize, pos: usize);
+    // fn forward(&mut self, token: usize, pos: usize);
     fn from_file(cp_path: &str) -> Self;
     fn get_config(&self) -> Config;
-    fn sample(&mut self, temperature: f32) -> usize;
+    // fn sample(&mut self, temperature: f32) -> usize;
     fn cpu_state(&self) -> &RunState;
 }
 
-
-#[derive(Default, Debug)]
-pub struct CPUStorage {
-    data: Vec<f32>
+pub struct View<'a, T: Storage> {
+    pub data: &'a T,
+    pub range: Range<usize>,
 }
 
-pub trait MutView<'a> {
-    type MV;
-
-    fn as_mut_slice(&'a mut self) -> Self::MV;
-    fn mut_slice(&'a mut self, range: Range<usize>) -> Self::MV;
+pub struct MutView<'a, MT> where MT: Storage {
+    pub data: &'a mut MT,
+    pub range: Range<usize>,
 }
 
-pub trait View<'a> {
-    type V;
-
-    fn as_slice(&'a self) -> Self::V;
-    fn slice(&'a self, range: Range<usize>) -> Self::V;
-}
-
-impl<'a> MutView<'a> for CPUStorage {
-    type MV = CPUMutView<'a>;
-
-    fn as_mut_slice(&'a mut self) -> CPUMutView<'a> {
-        CPUMutView::new(&mut self.data)
-    }
-
-    fn mut_slice(&'a mut self, range: Range<usize>) -> CPUMutView<'a> {
-        CPUMutView {
-            data: &mut self.data,
-            range: range,
-        }
-    }
-
-}
-
-impl<'a> View<'a> for CPUStorage {
-    type V  = CPUView<'a>;
-
-    fn as_slice(&'a self) -> CPUView<'a> {
-        CPUView::new(&self.data)
-    }
-
-    fn slice(&'a self, range: Range<usize>) -> CPUView<'a> {
-        CPUView {
-            data: &self.data,
-            range: range,
-        }
-    }
-
-}
-
-#[derive(Debug)]
-pub struct CPUView<'a> {
-    data: &'a Vec<f32>,
-    range: Range<usize>,
-}
-
-impl<'a> CPUView<'a> {
-    fn new(data: &'a Vec<f32>) -> Self {
-        let l = data.len();
-        Self {
-            data: data,
-            range: 0..l
-        }
-    }
-
-}
-
-impl<'a> View<'a> for CPUView<'_> {
-    type V = Self;
-    fn slice(&self, range: Range<usize>) -> Self {
-        Self {
+impl<'a, T: Storage> View<'a, T> {
+    pub fn slice(&self, range: Range<usize>) -> View<'_, T> {
+        View {
             data: self.data,
-            range: (self.range.start + range.start)..(self.range.end + range.end)
+            range,
         }
     }
 
-    fn as_slice(&self) -> Self::V {
-        Self {
+    pub fn new(storage: &'a T) -> View<'a, T> {
+        View {
+            data: storage,
+            range: 0..storage.len()
+        }
+    }
+}
+
+pub trait Storage {
+    fn len(&self) -> usize;
+}
+
+impl<'a, MT: Storage> MutView<'a, MT> {
+    pub fn as_view(&self) -> View<'_, MT> {
+        View {
             data: self.data,
-            range: (self.range.start)..(self.range.end)
+            range: self.range.clone(),
         }
     }
-
-}
-
-impl<'a> MutView<'a> for CPUMutView<'a> {
-    type MV = Self;
-
-    fn as_mut_slice(&'a mut self) -> Self::MV {
-        todo!()
-    }
-
-    fn mut_slice(&'a mut self, range: Range<usize>) -> Self::MV {
-        Self {
+    pub fn slice(&self, range: Range<usize>) -> View<'_, MT> {
+        View {
             data: self.data,
-            range: (self.range.start + range.start)..(self.range.end + range.end)
+            range,
         }
     }
 
-}
-
-#[derive(Debug)]
-pub struct CPUMutView<'a> {
-    data: &'a mut Vec<f32>,
-    range: Range<usize>,
-}
-
-impl<'a> CPUMutView<'a> {
-    fn new(data: &'a mut Vec<f32>) -> Self {
-        let l = data.len();
-        Self {
-            data: data,
-            range: 0..l
-        }
-    }
-    #[allow(dead_code)]
-    fn slice(&'a self, range: Range<usize>) -> CPUView {
-        CPUView {
+    pub fn mut_slice(&mut self, range: Range<usize>) -> MutView<'_, MT> {
+        MutView {
             data: self.data,
-            range: (self.range.start + range.start)..(self.range.end + range.end)
+            range,
         }
     }
 
+    pub fn new(storage: &mut MT) -> MutView<'_, MT> {
+        let le = storage.len();
+        MutView {
+            data: storage,
+            range: 0..le
+        }
+    }
 
 }
 
-impl AsRef<[f32]> for CPUStorage {
-    fn as_ref(&self) -> &[f32] {
-        &self.data.as_slice()
+impl<'a, T: Storage> AsRef<T> for View<'a, T> {
+    fn as_ref(&self) -> &T {
+        &self.data
     }
 }
 
-impl AsMut<[f32]> for CPUStorage {
-    fn as_mut(&mut self) -> &mut [f32] {
-        self.data.as_mut_slice()
+impl<'a, T: Storage> AsRef<T> for MutView<'a, T> {
+    fn as_ref(&self) -> &T {
+        &self.data
     }
 }
 
-impl AsRef<[f32]> for CPUView<'_> {
-    fn as_ref(&self) -> &[f32] {
-        &self.data[self.range.start..self.range.end]
+impl<'a, T: Storage> AsMut<T> for MutView<'a, T> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.data
     }
 }
 
-impl AsMut<[f32]> for CPUMutView<'_> {
-    fn as_mut(&mut self) -> &mut [f32] {
-        &mut self.data[self.range.start..self.range.end]
+impl Storage for Vec<i32> {
+    fn len(&self) -> usize {
+        self.len()
+    }
+}
+
+impl Storage for Vec<f32> {
+    fn len(&self) -> usize {
+        self.len()
     }
 }
 

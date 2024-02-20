@@ -1,5 +1,7 @@
 use clap::Parser;
-use transformer::Transformer;
+use device::cpu::CPU;
+use transformer::ram::{RunStateView, TransformerWeightsView};
+use transformer::{Config, Transformer};
 #[cfg(not(feature="gpu"))]
 use transformer::ram::TransformerCPU;
 #[cfg(feature="gpu")]
@@ -15,6 +17,8 @@ mod device;
 mod transformer;
 mod utils;
 use utils::read::read_n;
+
+use crate::transformer::ram::{forward, sample};
 
 #[derive(Parser, Debug)]
 #[command(long_about = None)]
@@ -66,23 +70,25 @@ fn main() {
 
 
     #[cfg(not(feature="gpu"))]
-    let transformer = &mut TransformerCPU::from_file(path);
+    let mut transformer = TransformerCPU::from_file(path);
+    let config = &transformer.get_config().clone();
+    let wv = TransformerWeightsView::from_ws(&transformer.weights);
+    let mut rsv = RunStateView::from_rs(&mut transformer.state);
 
-    let config = transformer.get_config();
     let step = args.step;
     let prompt = args.prompt;
     let temperature = args.temperature;
     let tokenizer = Tokenizer::new(token_path, config.vocab_size).unwrap();
     if args.mode == "generate" {
         let start: SystemTime = SystemTime::now();
-        let _ = generate(transformer, &tokenizer, prompt, temperature, step.into());
+        let _ = generate(&config, &tokenizer, prompt, temperature, step.into(), &wv, &mut rsv, &transformer.device);
         let elapsed = start.elapsed().unwrap();
         println!("\n--------------------------------");
         println!("elapsed: {}.{:03} s, avg tok/s: {}",
              elapsed.as_secs(), elapsed.subsec_millis(),
              (step - 1) as f32 / elapsed.as_secs_f32());
     } else {
-        let _ = chat(transformer, &tokenizer, step.into());
+        // let _ = chat(&mut transformer, &tokenizer, step.into());
     }
 }
 
@@ -144,8 +150,9 @@ fn chat<T>(transformer: &mut T,
 
             if token == 2 { user_turn = true; }
 
-            transformer.forward(token, pos);
-            next = transformer.sample(0.9);
+            // forward(transformer.get_config(), wv, rsv, token, pos, device)
+            // forward(token, pos);
+            // next = transformer.sample(0.9);
             pos += 1;
 
             if user_index >= prompt_tokens.len() && next != 2 {
@@ -162,12 +169,15 @@ fn chat<T>(transformer: &mut T,
 
 }
 
-fn generate<T>(transformer: &mut T,
+fn generate<'a>(cfg: &Config,
     tokenizer: &Tokenizer,
     prompt: String,
     temperature: f32,
-    steps: usize) -> Result<()>
-where T: Transformer
+    steps: usize,
+    wv: &TransformerWeightsView<'a, Vec<f32>>,
+    rsv: &mut RunStateView<'a, Vec<f32>>,
+    device: &CPU
+) -> Result<()>
     {
     let prompt_tokens = if prompt.len() > 0 { tokenizer.encode(&prompt) } else { Vec::new() };
 
@@ -176,12 +186,13 @@ where T: Transformer
     let mut next;
 
     while pos < steps {
-        transformer.forward( token, pos);
+        forward(cfg, wv, rsv, token, pos, device);
+        // transformer.forward( token, pos);
 
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
         } else {
-            next = transformer.sample(temperature);
+            next = sample(cfg, rsv, device, temperature);// sample(temperature);
         }
 
         let mut token_str = tokenizer.vocab[next].clone();
