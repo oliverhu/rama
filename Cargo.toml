@@ -18,7 +18,7 @@ rand_chacha ={ version = "*" }
 wide = "0.7.13"
 
 [features]
-# default = ["gpu"]
+default = ["gpu"]
 gpu = ["dep:cudarc"]
 
 [dependencies.cudarc]

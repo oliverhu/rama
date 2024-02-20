@@ -1,5 +1,4 @@
 use std::{io::BufReader, fs::File};
-use rayon::prelude::*;
 use crate::device::cpu::CPU;
 use super::{Config, MutView, Storage, Transformer, View};
 use rand_chacha::ChaCha20Rng;

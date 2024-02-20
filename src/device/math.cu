@@ -36,7 +36,7 @@ extern "C" __global__ void rmsnorm(float *output, float *input, float *weight, i
 
 }
 
-extern "C" __global__ void apply_position(float *q, float *k, float *pos_real, float *pos_img, int n_heads, int head_size) {
+extern "C" __global__ void apply_position(float *q, float *k, float *pos_real, float *pos_img, int head_size) {
     int i = blockIdx.x*blockDim.x+threadIdx.x;
     if (i < head_size / 2) {
         float fcr = pos_real[i];

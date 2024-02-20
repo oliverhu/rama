@@ -2,13 +2,11 @@ use std::sync::Arc;
 
 use cudarc::cublas::{CudaBlas, GemmConfig, Gemm};
 use cudarc::cublas::sys::cublasOperation_t;
-use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig, DeviceRepr, DevicePtr, DevicePtrMut};
+use cudarc::driver::{CudaDevice, CudaSlice, CudaView, CudaViewMut, DeviceRepr, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::compile_ptx;
 
-use crate::transformer::Config;
-use crate::transformer::hbm::RunStateGPU;
-
-use super::device::Device;
+use crate::transformer::ram::RunStateView;
+use crate::transformer::{Config, MutView, View};
 
 #[allow(dead_code)]
 const TRANS: cublasOperation_t = cublasOperation_t::CUBLAS_OP_T;
@@ -43,6 +41,22 @@ pub struct GPU {
     pub blas: Arc<CudaBlas>,
 }
 
+impl MutView<'_, CudaSlice<f32>> {
+    fn cudaview(&self) -> CudaView<'_, f32> {
+        self.as_mut().slice(self.range)
+    }
+
+    fn cudamutview(&self) -> CudaViewMut<'_, f32> {
+        self.as_mut().slice_mut(self.range)
+    }
+}
+
+impl View<'_, CudaSlice<f32>> {
+    fn cudaview(&self) -> CudaView<'_, f32> {
+        self.as_ref().slice(self.range)
+    }
+}
+
 impl GPU {
     pub fn new() -> Self {
         let dev = CudaDevice::new(0).unwrap();
@@ -66,31 +80,34 @@ impl GPU {
         }
     }
 
-    pub fn array_add<T: DeviceRepr>(&self, output: T, inp: T, n: usize) {
+    pub fn array_add(&self, target: &mut MutView<'_, CudaSlice<f32>>, source: &View<'_, CudaSlice<f32>>,  n: usize) {
         let f = self.gpu.get_func("module", "array_add").unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (output, inp, n,)) }.unwrap();
+        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&target.cudaview(), &source.cudaview(), n,)) }.unwrap();
     }
 
-    pub fn array_mult<T: DeviceRepr>(&self, output: T, inp: T, n: i32) {
+    pub fn array_mult(&self, target: &mut MutView<'_, CudaSlice<f32>>, source: &View<'_, CudaSlice<f32>>, n: usize) {
         let f = self.gpu.get_func("module", "array_mult").unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (output, inp, n,)) }.unwrap();
+        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&target.cudaview(), &source.cudaview(), n,)) }.unwrap();
+
     }
 
-    pub fn sinu<T: DeviceRepr>(&self, output: T, n: i32) {
+    pub fn sinu(&self, o: &mut MutView<'_, CudaSlice<f32>>, n: usize) {
         let f = self.gpu.get_func("module", "sinu").unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (output, n,)) }.unwrap();
-
+        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&o.cudaview(), n,)) }.unwrap();
     }
 
-    pub fn multi_head_attention(&self, gpu_state: &RunStateGPU, cfg: &Config, layer: usize, pos: usize) {
+    pub fn multi_head_attention(&self, rsv: &mut RunStateView<'_, CudaSlice<f32>>,
+                                cfg: &Config,
+                                layer: usize,
+                                pos: usize,) {
         let head_size = cfg.dim / cfg.n_heads;
         let f = self.gpu.get_func("module", "calculate_attention").unwrap();
         unsafe { f.launch(LaunchConfig::for_num_elems(cfg.n_heads as u32), (
-            &gpu_state.xb,
-            &gpu_state.att,
-            &gpu_state.q,
-            &gpu_state.key_cache,
-            &gpu_state.value_cache,
+            &rsv.xb.cudaview(),
+            &rsv.att.cudaview(),
+            &rsv.q.cudaview(),
+            &rsv.key_cache.cudaview(),
+            &rsv.value_cache.cudaview(),
             layer,
             cfg.dim,
             pos,
@@ -109,11 +126,11 @@ impl GPU {
         };
 
         unsafe { f.launch(lcfg, (
-            &gpu_state.xb,
-            &gpu_state.att,
-            &gpu_state.q,
-            &gpu_state.key_cache,
-            &gpu_state.value_cache,
+            &rsv.xb.cudaview(),
+            &rsv.att.cudaview(),
+            &rsv.q.cudaview(),
+            &rsv.key_cache.cudaview(),
+            &rsv.value_cache.cudaview(),
             layer,
             cfg.dim,
             pos,
@@ -130,48 +147,46 @@ impl GPU {
         unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (src, dest, n,)).unwrap(); };
     }
 
-    pub fn rmsnorm<O: DeviceRepr, X: DeviceRepr, W: DeviceRepr>(&self, o: O, x: X, w: W, n: i32) {
+    pub fn rmsnorm(&self, o: &mut MutView<'_, CudaSlice<f32>>, x: &View<'_, CudaSlice<f32>>,
+                        weight: &View<'_, CudaSlice<f32>>, n: usize) {
         let f = self.gpu.get_func("module", "rmsnorm").unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (o, x, w, n,)) }.unwrap();
+        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&o.cudaview(), &x.cudaview(), &weight.cudaview(), n,)) }.unwrap();
     }
 
-    pub fn apply_position<Q: DeviceRepr, K: DeviceRepr, R: DeviceRepr, I: DeviceRepr>(&self, q: Q, k: K, pos_real: R, pos_img: I, n_heads: i32, head_size: i32) {
+    pub fn apply_position(&self, q: &mut MutView<'_, CudaSlice<f32>>, k: &mut MutView<'_, CudaSlice<f32>>, pos_real: &View<'_, CudaSlice<f32>>, pos_img: &View<'_, CudaSlice<f32>>, head_size: usize) {
         let f = self.gpu.get_func("module", "apply_position").unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems((head_size / 2 + 1) as u32), (q, k, pos_real, pos_img, n_heads, head_size)) }.unwrap();
+        unsafe { f.launch(LaunchConfig::for_num_elems((head_size / 2 + 1) as u32), (&q.cudaview(), &k.cudaview(), &pos_real.cudaview(), &pos_img.cudaview(), head_size)) }.unwrap();
     }
 
 }
 
-// impl<MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr> Device<MT, T, T2> for GPU where  {
 impl GPU {
-    fn matmul_1d<MT, T, T2>(&self, o: MT, w: T, x: T2, n: usize) where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr{
+    pub fn matmul_1d(&self, o: &mut MutView<'_, CudaSlice<f32>>, w: &View<'_, CudaSlice<f32>>, x: &View<'_, CudaSlice<f32>>, n: usize) {
+    // fn matmul_1d<MT, T, T2>(&self, o: MT, w: T, x: T2, n: usize) where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr{
         self.matmul(o, w, x, n, n, 1)
     }
 
-    fn matmul<MT, T, T2>(&self, o: MT, a: T, b: T2, width: usize, o_rows: usize, o_cols: usize)  where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr{
+    pub fn matmul(&self, o: &mut MutView<'_, CudaSlice<f32>>, a: &View<'_, CudaSlice<f32>>, b: &View<'_, CudaSlice<f32>>, width: usize, o_rows: usize, o_cols: usize) {
         let f = self.gpu.get_func("module", "matmul").unwrap();
         let cfg = LaunchConfig {
             block_dim: (COL_TILE_WIDTH as u32, ROW_TILE_WIDTH as u32, 1),
             grid_dim: ((o_cols/COL_TILE_WIDTH + 2) as u32, (o_rows/ROW_TILE_WIDTH + 2) as u32, 1),
             shared_mem_bytes: 0,
         };
-        unsafe { f.launch(cfg, (a, b, o, width, o_rows, o_cols)) }.unwrap();
+        unsafe { f.launch(cfg, (&a.cudaview(), &b.cudaview(), &o.cudaview(), width, o_rows, o_cols)) }.unwrap();
     }
 
-    // fn rmsnorm<MT, T, T2>(&self, o: MT, x: T, w: T2, n: usize) {
-    //     let f = self.gpu.get_func("module", "rmsnorm").unwrap();
-    //     unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (o, x, w, n,)) }.unwrap();
-    // }
-
-    fn softmax<MT, T, T2>(&self, arr: MT, size: usize) where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr {
+    // fn softmax<MT, T, T2>(&self, arr: MT, size: usize) where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr {
+    pub fn softmax<'a>(&self, x: &mut MutView<'a, CudaSlice<f32>>, n: usize) {
         let f = self.gpu.get_func("module", "softmax").unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems(size as u32), (arr, size)) }.unwrap();
+        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&x.cudaview(), n)) }.unwrap();
     }
 }
 
 impl GPU {
 
-    pub fn matmul_cublas<A: DevicePtrMut<f32>, B: DevicePtr<f32>, C: DevicePtr<f32>>(&self, o: &mut A, a: &B, b: &C, width: usize, o_rows: usize, o_cols: usize) {
+    pub fn matmul_cublas(&self, o: &mut MutView<'_, CudaSlice<f32>>, a: &View<'_, CudaSlice<f32>>, b: &View<'_, CudaSlice<f32>>, width: usize, o_rows: usize, o_cols: usize) {
+    // pub fn matmul_cublas<A: DevicePtrMut<f32>, B: DevicePtr<f32>, C: DevicePtr<f32>>(&self, o: &mut A, a: &B, b: &C, width: usize, o_rows: usize, o_cols: usize) {
 
         let blas_cfg: GemmConfig<f32> = GemmConfig {
             transa: NO_TRANS,
@@ -185,7 +200,7 @@ impl GPU {
             beta: 0.0,
             ldc: o_cols as i32,
         };
-        unsafe { self.blas.gemm(blas_cfg, b, a,  o).unwrap(); };
+        unsafe { self.blas.gemm(blas_cfg, &b.cudaview(), &a.cudaview(),  &mut o.cudamutview()).unwrap(); };
     }
 }
 
