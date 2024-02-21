@@ -148,7 +148,7 @@ pub struct TransformerWeights<T: Storage> {
 
 
 impl TransformerWeights<CudaSlice<f32>> {
-    pub fn from_weight(tw: &mut TransformerWeights, device: &GPU) -> Self {
+    pub fn from_weight(tw: &mut TransformerWeights<Vec<f32>>, device: &GPU) -> Self {
         let token_embedding_table = allocate(device, &tw.token_embedding_table.as_mut());
         let rms_att_weight = allocate(device, &tw.rms_att_weight.as_mut());
         let rms_ffn_weight = allocate(device, &tw.rms_ffn_weight.as_mut());
@@ -162,17 +162,8 @@ impl TransformerWeights<CudaSlice<f32>> {
         let rms_final_weight = allocate(device, &tw.rms_final_weight.as_mut());
         let freq_cis_real = allocate(device, &tw.freq_cis_real.as_mut());
         let freq_cis_imag = allocate(device, &tw.freq_cis_imag.as_mut());
-        let wcls: CudaSlice<f32>;
-        let mut wcls_exists= false;
 
-        match &tw.wcls {
-            Some(val) =>
-            {
-                wcls = allocate(device, &val.as_ref());
-                wcls_exists = true;
-            }
-            None => {wcls = token_embedding_table.clone();},
-        }
+        let wcls = allocate(device, &tw.wcls.as_mut());
 
         Self {
             token_embedding_table: token_embedding_table,
@@ -188,7 +179,7 @@ impl TransformerWeights<CudaSlice<f32>> {
             rms_final_weight: rms_final_weight,
             freq_cis_real: freq_cis_real,
             freq_cis_imag: freq_cis_imag,
-            wcls_exists,
+            wcls_exists: true,
             wcls,
         }
 
@@ -209,7 +200,8 @@ pub struct TransformerWeightsView<'a, T: Storage> {
     pub rms_final_weight:View<'a, T>,
     pub freq_cis_real: View<'a, T>,
     pub freq_cis_imag: View<'a, T>,
-    pub wcls: Option<View<'a, T>>,
+    pub wcls_exists: bool,
+    pub wcls: View<'a, T>,
 }
 
 impl<'a, 'b: 'a> TransformerWeightsView<'a, CudaSlice<f32>> {
@@ -229,14 +221,8 @@ impl<'a, 'b: 'a> TransformerWeightsView<'a, CudaSlice<f32>> {
             rms_final_weight: View::new(&ws.rms_final_weight),
             freq_cis_real: View::new(&ws.freq_cis_real),
             freq_cis_imag: View::new(&ws.freq_cis_imag),
-            wcls: {
-                if ws.wcls_exists {
-                  Some(View::new(&ws.wcls))
-                } else {
-                  None
-                }
-            },
-            // wcls: Some(View::new(&ws.freq_cis_imag)),
+            wcls: View::new(&ws.wcls),
+            wcls_exists: ws.wcls_exists
         }
 
     }
@@ -244,7 +230,7 @@ impl<'a, 'b: 'a> TransformerWeightsView<'a, CudaSlice<f32>> {
 
 impl<'a, 'b: 'a> TransformerWeightsView<'a, Vec<f32>> {
 
-    pub fn from_ws(ws: &'a TransformerWeights) -> TransformerWeightsView<'a, Vec<f32>> {
+    pub fn from_ws(ws: &'a TransformerWeights<Vec<f32>>) -> TransformerWeightsView<'a, Vec<f32>> {
         TransformerWeightsView {
             token_embedding_table: View::new(&ws.token_embedding_table),
             rms_att_weight: View::new(&ws.rms_att_weight),
@@ -259,23 +245,15 @@ impl<'a, 'b: 'a> TransformerWeightsView<'a, Vec<f32>> {
             rms_final_weight: View::new(&ws.rms_final_weight),
             freq_cis_real: View::new(&ws.freq_cis_real),
             freq_cis_imag: View::new(&ws.freq_cis_imag),
-            wcls: {
-                match &ws.wcls {
-                  None => None,
-                  Some(wcls) => Some(View::new(wcls)),
-                }
-                // { None } else {
-                //     Some(read_vec::<f32>(f, c.vocab_size * c.dim))
-                // }
-            },
-            // wcls: Some(View::new(&ws.freq_cis_imag)),
+            wcls: View::new(&ws.wcls),
+            wcls_exists: ws.wcls_exists,
         }
 
     }
 }
 
-impl TransformerWeights {
-    fn from_file(f: &mut BufReader<File>, c: &Config) -> Self {
+impl TransformerWeights<Vec<f32>> {
+    pub fn from_file(f: &mut BufReader<File>, c: &Config) -> Self {
         let head_size = c.dim / c.n_heads;
         Self {
             token_embedding_table: read_vec(f, c.vocab_size * c.dim),
@@ -291,9 +269,10 @@ impl TransformerWeights {
             rms_final_weight: read_vec(f, c.dim),
             freq_cis_real: read_vec(f, c.seq_len * head_size / 2),
             freq_cis_imag: read_vec(f, c.seq_len * head_size / 2),
+            wcls_exists: !c.shared_weight,
             wcls: {
-                if c.shared_weight { None } else {
-                    Some(read_vec::<f32>(f, c.vocab_size * c.dim))
+                if c.shared_weight { vec![1.0] } else {
+                    read_vec::<f32>(f, c.vocab_size * c.dim)
                 }
             },
         }

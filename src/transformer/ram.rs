@@ -1,13 +1,13 @@
 use std::{io::BufReader, fs::File};
 use crate::device::cpu::CPU;
-use super::{hbm::TransformerWeightsGPU, state::{RunState, RunStateView}, Config, Storage, Transformer, View};
+use super::{state::{RunState, RunStateView, TransformerWeights, TransformerWeightsView}, Config, Storage, Transformer, View};
 use cudarc::driver::CudaSlice;
 use rand_chacha::ChaCha20Rng;
 use rand::{Rng, SeedableRng};
 use crate::utils::read::*;
 pub struct TransformerCPU {
     pub config: Config,
-    pub weights: TransformerWeights,
+    pub weights: TransformerWeights<Vec<f32>>,
     pub state: RunState<Vec<f32>>,
     pub device: CPU
 }
@@ -93,10 +93,14 @@ pub fn forward<'a, T>(cfg: &Config, wv: &TransformerWeightsView<'a, Vec<f32>>,
     device.rmsnorm(&mut rsv.x, &rsv.xb.as_view(), &wv.rms_final_weight, 0);
 
     // compute logits
-    let wcls = match &wv.wcls {
-        Some(wcls) => wcls,
-        None => &wv.token_embedding_table,
+    let wcls = {
+        if wv.wcls_exists {
+            &wv.wcls
+        } else {
+            &wv.token_embedding_table
+        }
     };
+
     device.matmul_1d(&mut rsv.logits,  wcls, &rsv.x.as_view(), dim);
 }
 

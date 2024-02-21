@@ -3,8 +3,7 @@ use cudarc::cublas::CudaBlas;
 use cudarc::driver::CudaSlice;
 use device::cpu::CPU;
 use device::gpu::GPU;
-use transformer::ram::TransformerWeightsView;
-use transformer::state::RunStateView;
+use transformer::state::{RunStateView, TransformerWeightsView};
 use transformer::{Config, Transformer};
 #[cfg(not(feature="gpu"))]
 use transformer::ram::TransformerCPU;

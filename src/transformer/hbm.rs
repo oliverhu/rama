@@ -4,16 +4,15 @@ use rand_chacha::ChaCha20Rng;
 use crate::device::cpu::CPU;
 use crate::device::gpu::GPU;
 use super::ram::TransformerCPU;
-
-
-
+use super::state::{RunState, RunStateView, TransformerWeights, TransformerWeightsView};
+use super::{Config, Storage, Transformer};
 pub struct TransformerGPU {
     pub config: Config,
-    pub weights: TransformerWeightsGPU,
-    pub state: RunStateGPU,
+    pub weights: TransformerWeights<CudaSlice<f32>>,
+    pub state: RunState<CudaSlice<f32>>,
     pub device: GPU,
     // for debugging purposes.
-    pub _cpu_state: RunState,
+    pub _cpu_state: RunState<Vec<f32>>,
 }
 
 impl Storage for CudaSlice<f32> {
@@ -84,29 +83,23 @@ pub fn forward<'a>(cfg: &Config, wv: &TransformerWeightsView<'a, CudaSlice<f32>>
 
     }
 
-
     device.copy_from_slice(&mut rsv.xb, &rsv.x.as_view(), dim);
-
     device.rmsnorm(&mut rsv.x, &rsv.xb.as_view(), &gpu_weights.rms_final_weight, dim);
-
-    device.matmul_cublas(&mut rsv.logits, &gpu_weights.wcls.as_ref().unwrap(), &rsv.x.as_view(), dim, cfg.vocab_size, 1);
+    device.matmul_cublas(&mut rsv.logits, &gpu_weights.wcls, &rsv.x.as_view(), dim, cfg.vocab_size, 1);
 
 }
 
 impl Transformer for TransformerGPU {
-    fn cpu_state(&self) -> &RunState {
+    fn cpu_state(&self) -> &RunState<Vec<f32>> {
         &self._cpu_state
     }
-
-
-
     fn from_file(cp_path: &str) -> Self {
         let mut tcpu = TransformerCPU::from_file(cp_path);
         let gpu = GPU::new();
         Self {
             config: tcpu.get_config(),
-            weights: TransformerWeightsGPU::from_weight(&mut tcpu.weights, &gpu),
-            state: RunStateGPU::from_state(&mut tcpu.state, &gpu),
+            weights: TransformerWeights::from_weight(&mut tcpu.weights, &gpu),
+            state: RunState::from_state(&mut tcpu.state, &gpu),
             device: gpu,
             _cpu_state: tcpu.state,
         }

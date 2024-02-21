@@ -5,7 +5,7 @@ use cudarc::cublas::sys::cublasOperation_t;
 use cudarc::driver::{CudaDevice, CudaSlice, CudaView, CudaViewMut, DeviceRepr, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::compile_ptx;
 
-use crate::transformer::ram::RunStateView;
+use crate::transformer::state::RunStateView;
 use crate::transformer::{Config, MutView, View};
 
 #[allow(dead_code)]
