@@ -133,7 +133,13 @@ impl<'a, 'b: 'a> TransformerWeightsView<'a, Vec<f32>> {
             rms_final_weight: View::new(&ws.rms_final_weight),
             freq_cis_real: View::new(&ws.freq_cis_real),
             freq_cis_imag: View::new(&ws.freq_cis_imag),
-            wcls: View::new(&ws.wcls),
+            wcls: {
+                if ws.wcls_exists {
+                    View::new(&ws.wcls)
+                } else {
+                    View::new(&ws.token_embedding_table)
+                }
+            },
             wcls_exists: ws.wcls_exists,
         }
 

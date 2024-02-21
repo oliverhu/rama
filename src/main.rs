@@ -136,9 +136,7 @@ fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
 
 }
 
-///
-/// Tokenizer
-///
+// Tokenizer
 #[derive(Debug, Default)]
 struct Tokenizer {
     vocab: Vec<String>,

@@ -9,7 +9,7 @@ pub fn forward<'a, T: Storage, D: Device<T>>(cfg: &Config, wv: &TransformerWeigh
     let dim = cfg.dim;
     let hidden_dim = cfg.hidden_dim;
     let head_size = dim / cfg.n_heads;
-    device.copy_from_slice(&mut rsv.x, &wv.token_embedding_table.slice(token * dim..), dim);
+    device.copy_from_slice(&mut rsv.x, &wv.token_embedding_table.slice(token * dim..((token + 1) * cfg.dim)), dim);
 
     let pos_real = wv.freq_cis_real.slice(pos * (head_size / 2)..);
     let pos_img = wv.freq_cis_imag.slice(pos * (head_size / 2)..);
@@ -34,8 +34,8 @@ pub fn forward<'a, T: Storage, D: Device<T>>(cfg: &Config, wv: &TransformerWeigh
 
         // -- %%
         let lo = layer * cfg.seq_len * dim;
-        device.copy_from_slice(&mut rsv.key_cache.mut_slice(lo + pos * dim..), &rsv.k.as_view(), dim);
-        device.copy_from_slice(&mut rsv.value_cache.mut_slice(lo + pos * dim..), &rsv.v.as_view(), dim);
+        device.copy_from_slice(&mut rsv.key_cache.mut_slice(lo + pos * dim..(lo + (pos + 1) * dim)), &rsv.k.as_view(), dim);
+        device.copy_from_slice(&mut rsv.value_cache.mut_slice(lo + pos * dim..(lo + (pos + 1) * dim)), &rsv.v.as_view(), dim);
         // self.state.into_state(&mut self._cpu_state);
         device.multi_head_attention(rsv, &cfg, layer, pos);
         // self.state.into_state(&mut self._cpu_state);
