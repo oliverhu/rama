@@ -1,4 +1,4 @@
-use cudarc::driver::CudaSlice;
+use cudarc::driver::{CudaSlice, DeviceSlice};
 use rand::{SeedableRng, Rng};
 use rand_chacha::ChaCha20Rng;
 use crate::device::cpu::CPU;
@@ -16,7 +16,7 @@ pub struct TransformerGPU {
 }
 
 impl Storage for CudaSlice<f32> {
-    fn len(&self) -> usize {
+    fn length(&self) -> usize {
         self.len()
     }
 }

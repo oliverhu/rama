@@ -48,7 +48,7 @@ pub fn range_from(range: impl RangeBounds<usize>, max_len: usize) -> Range<usize
 
 impl<'a, T: Storage> View<'a, T> {
     pub fn slice(&self, range: impl RangeBounds<usize>) -> View<'_, T> {
-        let r = range_from(range, self.data.len());
+        let r = range_from(range, self.data.length());
 
         View {
             data: self.data,
@@ -59,13 +59,13 @@ impl<'a, T: Storage> View<'a, T> {
     pub fn new(storage: &'a T) -> View<'a, T> {
         View {
             data: storage,
-            range: 0..storage.len()
+            range: 0..storage.length()
         }
     }
 }
 
 pub trait Storage {
-    fn len(&self) -> usize;
+    fn length(&self) -> usize;
 }
 
 impl<'a, MT: Storage> MutView<'a, MT> {
@@ -76,7 +76,7 @@ impl<'a, MT: Storage> MutView<'a, MT> {
         }
     }
     pub fn slice(&self, range: impl RangeBounds<usize>) -> View<'_, MT> {
-        let r = range_from(range, self.data.len());
+        let r = range_from(range, self.data.length());
         View {
             data: self.data,
             range: r,
@@ -84,7 +84,7 @@ impl<'a, MT: Storage> MutView<'a, MT> {
     }
 
     pub fn mut_slice(&mut self, range: impl RangeBounds<usize>) -> MutView<'_, MT> {
-        let r = range_from(range, self.data.len());
+        let r = range_from(range, self.data.length());
         MutView {
             data: self.data,
             range: r,
@@ -92,7 +92,7 @@ impl<'a, MT: Storage> MutView<'a, MT> {
     }
 
     pub fn new(storage: &mut MT) -> MutView<'_, MT> {
-        let le = storage.len();
+        let le = storage.length();
         MutView {
             data: storage,
             range: 0..le
@@ -120,13 +120,13 @@ impl<'a, T: Storage> AsMut<T> for MutView<'a, T> {
 }
 
 impl Storage for Vec<i32> {
-    fn len(&self) -> usize {
+    fn length(&self) -> usize {
         self.len()
     }
 }
 
 impl Storage for Vec<f32> {
-    fn len(&self) -> usize {
+    fn length(&self) -> usize {
         self.len()
     }
 }
