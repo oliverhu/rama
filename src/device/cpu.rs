@@ -3,18 +3,20 @@ use rayon::prelude::*;
 use crate::transformer::{state::RunStateView, Config, MutView, View};
 
 use wide::f32x4;
+
+use super::device::Device;
 pub struct CPU {}
 
-impl CPU {
+impl Device<Vec<f32>> for CPU {
 
-    pub fn array_add(&self, target: &mut MutView<'_, Vec<f32>>, source: &View<'_, Vec<f32>>, ) {
+    fn array_add(&self, target: &mut MutView<'_, Vec<f32>>, source: &View<'_, Vec<f32>>, _n: usize) {
         let s_range = source.range.clone();
         let t_range = target.range.clone();
         target.as_mut()[t_range].iter_mut().zip(source.as_ref()[s_range].iter())
         .for_each(|(a, b)| *a += *b);
     }
 
-    pub fn multi_head_attention(&self, rsv: &mut RunStateView<'_, Vec<f32>>,
+    fn multi_head_attention(&self, rsv: &mut RunStateView<'_, Vec<f32>>,
                                 cfg: &Config,
                                 layer: usize,
                                 pos: usize,) {
@@ -45,19 +47,19 @@ impl CPU {
         });
     }
 
-    pub fn sinu(&self, o: &mut MutView<'_, Vec<f32>>) {
+    fn sinu(&self, o: &mut MutView<'_, Vec<f32>>, _n: usize) {
         let or = o.range.clone();
         o.as_mut()[or].par_iter_mut().for_each(|a|*a = *a * (1.0 / (1.0 + (-*a).exp())));
     }
 
-    pub fn array_mult(&self, target: &mut MutView<'_, Vec<f32>>, source: &View<'_, Vec<f32>>, ) {
+    fn array_mult(&self, target: &mut MutView<'_, Vec<f32>>, source: &View<'_, Vec<f32>>, _n: usize) {
         let s_range = source.range.clone();
         let t_range = target.range.clone();
         target.as_mut()[t_range].iter_mut().zip(source.as_ref()[s_range].iter())
         .for_each(|(a, b)| *a *= *b);
     }
 
-    pub fn copy_from_slice(&self, target: &mut MutView<'_, Vec<f32>>, source: &View<'_, Vec<f32>>, ) {
+    fn copy_from_slice(&self, target: &mut MutView<'_, Vec<f32>>, source: &View<'_, Vec<f32>>, _n: usize) {
         let s_range = source.range.clone();
         let t_range = target.range.clone();
         target.as_mut()[t_range].copy_from_slice(
@@ -65,7 +67,7 @@ impl CPU {
         );
     }
 
-    pub fn apply_position(&self, q: &mut MutView<'_, Vec<f32>>, k: &mut MutView<'_, Vec<f32>>, pos_real: &View<'_, Vec<f32>>, pos_img: &View<'_, Vec<f32>>, head_size: usize) {
+    fn apply_position(&self, q: &mut MutView<'_, Vec<f32>>, k: &mut MutView<'_, Vec<f32>>, pos_real: &View<'_, Vec<f32>>, pos_img: &View<'_, Vec<f32>>, head_size: usize) {
         let qrc = q.range.clone();
         let qr = &mut q.as_mut()[qrc];
 
@@ -90,13 +92,13 @@ impl CPU {
         }
     }
 
-    pub fn matmul_1d(&self, o: &mut MutView<'_, Vec<f32>>, w: &View<'_, Vec<f32>>, x: &View<'_, Vec<f32>>, n: usize)
+    fn matmul_1d(&self, o: &mut MutView<'_, Vec<f32>>, w: &View<'_, Vec<f32>>, x: &View<'_, Vec<f32>>, n: usize)
     {
         let le = o.as_ref().len();
         let _ = self.matmul(o, w, x, n, le, 1);
     }
 
-    pub fn rmsnorm(&self, o: &mut MutView<'_, Vec<f32>>, x: &View<'_, Vec<f32>>,
+    fn rmsnorm(&self, o: &mut MutView<'_, Vec<f32>>, x: &View<'_, Vec<f32>>,
                         weight: &View<'_, Vec<f32>>, _n: usize) {
         let xr = x.range.clone();
         let x = &x.as_ref()[xr];
@@ -116,7 +118,7 @@ impl CPU {
         }
     }
 
-    pub fn softmax<'a>(&self, x: &mut MutView<'a, Vec<f32>>, _n: usize) {
+    fn softmax<'a>(&self, x: &mut MutView<'a, Vec<f32>>, _n: usize) {
         let x = x.as_mut();
         let max = x.par_iter().copied().reduce(|| x[0], |a, b| a.max(b));
         x.par_iter_mut().for_each(|a| *a=(*a-max).exp());
@@ -124,14 +126,7 @@ impl CPU {
         x.par_iter_mut().for_each(|a| *a /= sum);
     }
 
-    pub fn softmax_num(&self, x: &mut [f32], _n: usize) {
-        let max = x.par_iter().copied().reduce(|| x[0], |a, b| a.max(b));
-        x.par_iter_mut().for_each(|a| *a=(*a-max).exp());
-        let sum = x.par_iter().sum::<f32>();
-        x.par_iter_mut().for_each(|a| *a /= sum);
-    }
-
-    pub fn matmul(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<f32>>, b: &View<'_, Vec<f32>>, width: usize, _o_rows: usize, o_cols: usize)
+    fn matmul(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<f32>>, b: &View<'_, Vec<f32>>, width: usize, _o_rows: usize, o_cols: usize)
     {
         let or = o.range.clone();
         let o = &mut o.as_mut()[or];
@@ -164,4 +159,13 @@ impl CPU {
         );
     }
 
+}
+
+impl CPU {
+    pub fn softmax_num(&self, x: &mut [f32], _n: usize) {
+        let max = x.par_iter().copied().reduce(|| x[0], |a, b| a.max(b));
+        x.par_iter_mut().for_each(|a| *a=(*a-max).exp());
+        let sum = x.par_iter().sum::<f32>();
+        x.par_iter_mut().for_each(|a| *a /= sum);
+    }
 }

@@ -60,8 +60,8 @@ impl View<'_, CudaSlice<f32>> {
     }
 }
 
-impl GPU {
-    pub fn new() -> Self {
+impl Device<CudaSlice<f32>> for GPU {
+    fn new() -> Self {
         let dev = CudaDevice::new(0).unwrap();
 
         let cu_file = std::fs::read_to_string("./src/device/math.cu").unwrap();
@@ -83,23 +83,23 @@ impl GPU {
         }
     }
 
-    pub fn array_add(&self, target: &mut MutView<'_, CudaSlice<f32>>, source: &View<'_, CudaSlice<f32>>,  n: usize) {
+    fn array_add(&self, target: &mut MutView<'_, CudaSlice<f32>>, source: &View<'_, CudaSlice<f32>>,  n: usize) {
         let f = self.gpu.get_func("module", "array_add").unwrap();
         unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&target.cudaview(), &source.cudaview(), n,)) }.unwrap();
     }
 
-    pub fn array_mult(&self, target: &mut MutView<'_, CudaSlice<f32>>, source: &View<'_, CudaSlice<f32>>, n: usize) {
+    fn array_mult(&self, target: &mut MutView<'_, CudaSlice<f32>>, source: &View<'_, CudaSlice<f32>>, n: usize) {
         let f = self.gpu.get_func("module", "array_mult").unwrap();
         unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&target.cudaview(), &source.cudaview(), n,)) }.unwrap();
 
     }
 
-    pub fn sinu(&self, o: &mut MutView<'_, CudaSlice<f32>>, n: usize) {
+    fn sinu(&self, o: &mut MutView<'_, CudaSlice<f32>>, n: usize) {
         let f = self.gpu.get_func("module", "sinu").unwrap();
         unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&o.cudaview(), n,)) }.unwrap();
     }
 
-    pub fn multi_head_attention(&self, rsv: &mut RunStateView<'_, CudaSlice<f32>>,
+    fn multi_head_attention(&self, rsv: &mut RunStateView<'_, CudaSlice<f32>>,
                                 cfg: &Config,
                                 layer: usize,
                                 pos: usize,) {
@@ -143,19 +143,19 @@ impl GPU {
         )) }.unwrap();
 
     }
-    pub fn copy_from_slice(&self, target: &mut MutView<'_, CudaSlice<f32>>, source: &View<'_, CudaSlice<f32>>, n: usize) {
+    fn copy_from_slice(&self, target: &mut MutView<'_, CudaSlice<f32>>, source: &View<'_, CudaSlice<f32>>, n: usize) {
     // pub fn copy_from_slice<S: DeviceRepr, D: DeviceRepr>(&self, src: S, dest: D, n: i32) {
         let f = self.gpu.get_func("module", "copy_from_slice").unwrap();
         unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&source.cudaview(), &target.cudaview(), n,)).unwrap(); };
     }
 
-    pub fn rmsnorm(&self, o: &mut MutView<'_, CudaSlice<f32>>, x: &View<'_, CudaSlice<f32>>,
+    fn rmsnorm(&self, o: &mut MutView<'_, CudaSlice<f32>>, x: &View<'_, CudaSlice<f32>>,
                         weight: &View<'_, CudaSlice<f32>>, n: usize) {
         let f = self.gpu.get_func("module", "rmsnorm").unwrap();
         unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&o.cudaview(), &x.cudaview(), &weight.cudaview(), n,)) }.unwrap();
     }
 
-    pub fn apply_position(&self, q: &mut MutView<'_, CudaSlice<f32>>, k: &mut MutView<'_, CudaSlice<f32>>, pos_real: &View<'_, CudaSlice<f32>>, pos_img: &View<'_, CudaSlice<f32>>, head_size: usize) {
+    fn apply_position(&self, q: &mut MutView<'_, CudaSlice<f32>>, k: &mut MutView<'_, CudaSlice<f32>>, pos_real: &View<'_, CudaSlice<f32>>, pos_img: &View<'_, CudaSlice<f32>>, head_size: usize) {
         let f = self.gpu.get_func("module", "apply_position").unwrap();
         unsafe { f.launch(LaunchConfig::for_num_elems((head_size / 2 + 1) as u32), (&q.cudaview(), &k.cudaview(), &pos_real.cudaview(), &pos_img.cudaview(), head_size)) }.unwrap();
     }

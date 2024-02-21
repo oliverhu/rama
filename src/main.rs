@@ -1,10 +1,13 @@
 use clap::Parser;
+#[cfg(feature="gpu")]
 use cudarc::cublas::CudaBlas;
+#[cfg(feature="gpu")]
 use cudarc::driver::CudaSlice;
 use device::cpu::CPU;
+#[cfg(feature="gpu")]
 use device::gpu::GPU;
 use transformer::state::{RunStateView, TransformerWeightsView};
-use transformer::{Config, Transformer};
+use transformer::{Config, Storage, Transformer};
 #[cfg(not(feature="gpu"))]
 use transformer::ram::TransformerCPU;
 #[cfg(feature="gpu")]
@@ -20,7 +23,7 @@ mod device;
 mod transformer;
 mod utils;
 use utils::read::read_n;
-
+#[cfg(feature="gpu")]
 use crate::transformer::hbm;
 use crate::transformer::ram::{forward, sample};
 
@@ -172,13 +175,16 @@ fn chat<T>(transformer: &mut T,
 
 }
 
-fn generate<'a>(cfg: &Config,
+fn generate<'a, T: Storage>(cfg: &Config,
     tokenizer: &Tokenizer,
     prompt: String,
     temperature: f32,
     steps: usize,
-    wv: &TransformerWeightsView<'a, CudaSlice<f32>>,
-    rsv: &mut RunStateView<'a, CudaSlice<f32>>,
+    wv: &TransformerWeightsView<'a, T>,
+    rsv: &mut RunStateView<'a, T>,
+    #[cfg(not(feature="gpu"))]
+    device: &CPU,
+    #[cfg(feature="gpu")]
     device: &GPU
 ) -> Result<()>
     {
@@ -189,11 +195,19 @@ fn generate<'a>(cfg: &Config,
     let mut next;
 
     while pos < steps {
+
+        #[cfg(not(feature="gpu"))]
+        forward(cfg, wv, rsv, token, pos, device);
+        #[cfg(feature="gpu")]
         hbm::forward(cfg, wv, rsv, token, pos, device);
 
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
         } else {
+            #[cfg(not(feature="gpu"))]
+            next = sample(cfg, rsv, device, temperature);
+
+            #[cfg(feature="gpu")]
             next = hbm::sample(cfg, rsv, device, temperature);// sample(temperature);
         }
 

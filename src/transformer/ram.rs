@@ -1,7 +1,6 @@
 use std::{io::BufReader, fs::File};
 use crate::device::cpu::CPU;
 use super::{state::{RunState, RunStateView, TransformerWeights, TransformerWeightsView}, Config, Storage, Transformer, View};
-use cudarc::driver::CudaSlice;
 use rand_chacha::ChaCha20Rng;
 use rand::{Rng, SeedableRng};
 use crate::utils::read::*;
