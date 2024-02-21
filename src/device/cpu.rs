@@ -1,6 +1,8 @@
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
 
-use crate::transformer::{state::RunStateView, Config, MutView, View};
+use crate::transformer::{infer::sample_top_q, state::RunStateView, Config, MutView, View};
 
 use wide::f32x4;
 
@@ -157,6 +159,33 @@ impl Device<Vec<f32>> for CPU {
             }
 
         );
+    }
+
+    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, Vec<f32>>, temperature: f32) -> usize {
+        let next;
+
+        let lr = rsv.logits.range.clone();
+        let logits = &mut rsv.logits.as_mut()[lr];
+        // let logits = self.rsv.logits.as_mut();
+        let rng_seed = 100;
+        let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
+        if temperature == 0.0 {
+            // greedy decoding, choose argmax
+            next = logits.iter().enumerate()
+                .reduce(|(i1, v1), (i2, v2)| if v1 > v2 { (i1, v1) } else { (i2, v2) })
+                .map(|(i, _)| i).unwrap();
+        } else {
+            // temperature scaling
+            if temperature < 1.0 {
+                logits.iter_mut().for_each(|z| *z /= temperature);
+            }
+            // compute probabilities
+            self.softmax_num(logits, 0);
+            // next = sample(&transformer.rsv.logits, &mut rng);
+            next = sample_top_q(logits, cfg.vocab_size, 0.9, &mut rng);
+
+        }
+        next
     }
 
 }

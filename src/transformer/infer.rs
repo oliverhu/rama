@@ -1,3 +1,6 @@
+use rand::Rng;
+use rand_chacha::ChaCha20Rng;
+
 use crate::device::device::Device;
 
 use super::{state::{RunStateView, TransformerWeightsView}, Config, Storage};
@@ -62,5 +65,40 @@ pub fn forward<'a, T: Storage, D: Device<T>>(cfg: &Config, wv: &TransformerWeigh
     device.copy_from_slice(&mut rsv.xb, &rsv.x.as_view(), dim);
     device.rmsnorm(&mut rsv.x, &rsv.xb.as_view(), &wv.rms_final_weight, dim);
     device.matmul(&mut rsv.logits, &wv.wcls, &rsv.x.as_view(), dim, cfg.vocab_size, 1);
+
+}
+
+pub fn sample_top_q(probabilities: &[f32], num: usize, topp: f32, rng: &mut ChaCha20Rng) -> usize {
+    let cutoff = (1.0f32 - topp) / ((num - 1) as f32);
+    let mut prob_index = probabilities.iter().enumerate().filter(
+        |(_, &p)| p > cutoff
+    ).collect::<Vec<(usize, &f32)>>();
+    prob_index.sort_by(
+        |(_, &a2), (_, &b2)|
+        b2.partial_cmp(&a2).unwrap()
+    );
+
+    let mut cum_prob = 0.0f32;
+    let mut last_index = prob_index.len() - 1;
+    for i in 0..prob_index.len() {
+        cum_prob += prob_index[i].1;
+        if cum_prob > topp {
+            last_index = i;
+            break;
+        }
+    }
+
+    let r = rng.gen::<f32>() * cum_prob;
+    let mut cdf = 0.0f32;
+
+    for i in 0..last_index {
+        cdf += prob_index[i].1;
+        if r < cdf {
+            return prob_index[i].0;
+        }
+    }
+
+    return prob_index[last_index].0;
+
 
 }

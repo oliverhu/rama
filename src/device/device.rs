@@ -13,4 +13,7 @@ pub trait Device<T: Storage> {
     fn matmul_1d(&self, o: &mut MutView<'_, T>, w: &View<'_, T>, x: &View<'_, T>, n: usize);
     fn matmul(&self, o: &mut MutView<'_, T>, a: &View<'_, T>, b: &View<'_, T>, width: usize, o_rows: usize, o_cols: usize);
     fn softmax<'a>(&self, x: &mut MutView<'a, T>, n: usize);
+
+    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, T>, temperature: f32) -> usize;
+
 }

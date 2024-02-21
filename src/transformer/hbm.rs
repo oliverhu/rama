@@ -43,68 +43,6 @@ impl Transformer for TransformerGPU {
 
 }
 
-pub fn sample<'a>(cfg: &Config, rsv: &mut RunStateView<'a, CudaSlice<f32>>, device: &GPU, temperature: f32) -> usize {
-// fn sample(temperature: f32) -> usize {
-    let next;
-    let rng_seed = 10;
-    let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
-    // let mut logits = vec![0.0f32; self.config.vocab_size];
-    let mut logits = device.gpu.sync_reclaim(rsv.logits.as_ref().clone()).unwrap();
-    // unsafe { let _ = memcpy_dtoh_sync(&mut logits, self.state.logits); };
-    if temperature == 0.0 {
-        // greedy decoding, choose argmax
-        next = logits.iter().enumerate()
-            .reduce(|(i1, v1), (i2, v2)| if v1 > v2 { (i1, v1) } else { (i2, v2) })
-            .map(|(i, _)| i).unwrap();
-    } else {
-        // temperature scaling
-        if temperature < 1.0 {
-            logits.iter_mut().for_each(|z| *z /= temperature);
-        }
-        // compute probabilities
-        let cpu = CPU {};
-        cpu.softmax_num(&mut logits, 0);
-        // next = sample(&transformer.state.logits, &mut rng);
-        next = sample_top_q(&logits, cfg.vocab_size, temperature, &mut rng);
-
-    }
-    next
-}
-
-fn sample_top_q(probabilities: &Vec<f32>, num: usize, topp: f32, rng: &mut ChaCha20Rng) -> usize {
-    let cutoff = (1.0f32 - topp) / ((num - 1) as f32);
-    let mut prob_index = probabilities.iter().enumerate().filter(
-        |(_, &p)| p > cutoff
-    ).collect::<Vec<(usize, &f32)>>();
-    prob_index.sort_by(
-        |(_, &a2), (_, &b2)|
-        b2.partial_cmp(&a2).unwrap()
-    );
-
-    let mut cum_prob = 0.0f32;
-    let mut last_index = prob_index.len() - 1;
-    for i in 0..prob_index.len() {
-        cum_prob += prob_index[i].1;
-        if cum_prob > topp {
-            last_index = i;
-            break;
-        }
-    }
-
-    let r = rng.gen::<f32>() * cum_prob;
-    let mut cdf = 0.0f32;
-
-    for i in 0..last_index {
-        cdf += prob_index[i].1;
-        if r < cdf {
-            return prob_index[i].0;
-        }
-    }
-
-    return prob_index[last_index].0;
-}
-
-
 // Allocate data in GPU memory and return a pointer to the location. Leak this object since the
 // lifecycle of the GPU object is the same as the local CudaSlice object.
 fn allocate(gpu: &GPU, data: &Vec<f32>) -> CudaSlice<f32> {

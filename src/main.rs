@@ -195,11 +195,7 @@ fn generate<'a, T: Storage>(cfg: &Config,
     let mut next;
 
     while pos < steps {
-
-        #[cfg(not(feature="gpu"))]
         forward(cfg, wv, rsv, token, pos, device);
-        #[cfg(feature="gpu")]
-        hbm::forward(cfg, wv, rsv, token, pos, device);
 
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];

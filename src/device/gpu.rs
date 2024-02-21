@@ -2,11 +2,17 @@ use std::sync::Arc;
 
 use cudarc::cublas::{CudaBlas, GemmConfig, Gemm};
 use cudarc::cublas::sys::cublasOperation_t;
-use cudarc::driver::{CudaDevice, CudaSlice, CudaView, CudaViewMut, DeviceRepr, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaDevice, CudaSlice, CudaView, CudaViewMut, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::compile_ptx;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 
+use crate::transformer::infer::sample_top_q;
 use crate::transformer::state::RunStateView;
 use crate::transformer::{Config, MutView, View};
+
+use super::cpu::CPU;
+use super::device::Device;
 
 #[allow(dead_code)]
 const TRANS: cublasOperation_t = cublasOperation_t::CUBLAS_OP_T;
@@ -61,27 +67,6 @@ impl View<'_, CudaSlice<f32>> {
 }
 
 impl Device<CudaSlice<f32>> for GPU {
-    fn new() -> Self {
-        let dev = CudaDevice::new(0).unwrap();
-
-        let cu_file = std::fs::read_to_string("./src/device/math.cu").unwrap();
-        let ptx = compile_ptx(cu_file).unwrap();
-        dev.load_ptx(ptx, "module", &
-            ["matmul",
-             "copy_from_slice",
-             "rmsnorm",
-             "apply_position",
-             "calculate_attention",
-             "array_add",
-             "array_mult",
-             "update_xb",
-             "sinu"]).unwrap();
-        let blas = Arc::new(CudaBlas::new(dev.clone()).unwrap());
-        Self {
-            gpu: dev,
-            blas: blas,
-        }
-    }
 
     fn array_add(&self, target: &mut MutView<'_, CudaSlice<f32>>, source: &View<'_, CudaSlice<f32>>,  n: usize) {
         let f = self.gpu.get_func("module", "array_add").unwrap();
@@ -160,32 +145,80 @@ impl Device<CudaSlice<f32>> for GPU {
         unsafe { f.launch(LaunchConfig::for_num_elems((head_size / 2 + 1) as u32), (&q.cudaview(), &k.cudaview(), &pos_real.cudaview(), &pos_img.cudaview(), head_size)) }.unwrap();
     }
 
+    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, CudaSlice<f32>>, temperature: f32) -> usize {
+        // fn sample(temperature: f32) -> usize {
+            let next;
+            let rng_seed = 10;
+            let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
+            // let mut logits = vec![0.0f32; self.config.vocab_size];
+            let mut logits = self.gpu.sync_reclaim(rsv.logits.as_ref().clone()).unwrap();
+            // unsafe { let _ = memcpy_dtoh_sync(&mut logits, self.state.logits); };
+            if temperature == 0.0 {
+                // greedy decoding, choose argmax
+                next = logits.iter().enumerate()
+                    .reduce(|(i1, v1), (i2, v2)| if v1 > v2 { (i1, v1) } else { (i2, v2) })
+                    .map(|(i, _)| i).unwrap();
+            } else {
+                // temperature scaling
+                if temperature < 1.0 {
+                    logits.iter_mut().for_each(|z| *z /= temperature);
+                }
+                // compute probabilities
+                let cpu = CPU {};
+                cpu.softmax_num(&mut logits, 0);
+                // next = sample(&transformer.state.logits, &mut rng);
+                next = sample_top_q(&logits, cfg.vocab_size, temperature, &mut rng);
+
+            }
+            next
+    }
+
+    fn matmul_1d(&self, o: &mut MutView<'_, CudaSlice<f32>>, w: &View<'_, CudaSlice<f32>>, x: &View<'_, CudaSlice<f32>>, n: usize) {
+        // fn matmul_1d<MT, T, T2>(&self, o: MT, w: T, x: T2, n: usize) where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr{
+            self.matmul(o, w, x, n, n, 1)
+        }
+
+        fn matmul(&self, o: &mut MutView<'_, CudaSlice<f32>>, a: &View<'_, CudaSlice<f32>>, b: &View<'_, CudaSlice<f32>>, width: usize, o_rows: usize, o_cols: usize) {
+            let f = self.gpu.get_func("module", "matmul").unwrap();
+            let cfg = LaunchConfig {
+                block_dim: (COL_TILE_WIDTH as u32, ROW_TILE_WIDTH as u32, 1),
+                grid_dim: ((o_cols/COL_TILE_WIDTH + 2) as u32, (o_rows/ROW_TILE_WIDTH + 2) as u32, 1),
+                shared_mem_bytes: 0,
+            };
+            unsafe { f.launch(cfg, (&a.cudaview(), &b.cudaview(), &o.cudaview(), width, o_rows, o_cols)) }.unwrap();
+        }
+
+        // fn softmax<MT, T, T2>(&self, arr: MT, size: usize) where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr {
+        fn softmax<'a>(&self, x: &mut MutView<'a, CudaSlice<f32>>, n: usize) {
+            let f = self.gpu.get_func("module", "softmax").unwrap();
+            unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&x.cudaview(), n)) }.unwrap();
+        }
+
+
 }
 
 impl GPU {
-    pub fn matmul_1d(&self, o: &mut MutView<'_, CudaSlice<f32>>, w: &View<'_, CudaSlice<f32>>, x: &View<'_, CudaSlice<f32>>, n: usize) {
-    // fn matmul_1d<MT, T, T2>(&self, o: MT, w: T, x: T2, n: usize) where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr{
-        self.matmul(o, w, x, n, n, 1)
-    }
+    pub fn new() -> Self {
+        let dev = CudaDevice::new(0).unwrap();
 
-    pub fn matmul(&self, o: &mut MutView<'_, CudaSlice<f32>>, a: &View<'_, CudaSlice<f32>>, b: &View<'_, CudaSlice<f32>>, width: usize, o_rows: usize, o_cols: usize) {
-        let f = self.gpu.get_func("module", "matmul").unwrap();
-        let cfg = LaunchConfig {
-            block_dim: (COL_TILE_WIDTH as u32, ROW_TILE_WIDTH as u32, 1),
-            grid_dim: ((o_cols/COL_TILE_WIDTH + 2) as u32, (o_rows/ROW_TILE_WIDTH + 2) as u32, 1),
-            shared_mem_bytes: 0,
-        };
-        unsafe { f.launch(cfg, (&a.cudaview(), &b.cudaview(), &o.cudaview(), width, o_rows, o_cols)) }.unwrap();
+        let cu_file = std::fs::read_to_string("./src/device/math.cu").unwrap();
+        let ptx = compile_ptx(cu_file).unwrap();
+        dev.load_ptx(ptx, "module", &
+            ["matmul",
+             "copy_from_slice",
+             "rmsnorm",
+             "apply_position",
+             "calculate_attention",
+             "array_add",
+             "array_mult",
+             "update_xb",
+             "sinu"]).unwrap();
+        let blas = Arc::new(CudaBlas::new(dev.clone()).unwrap());
+        Self {
+            gpu: dev,
+            blas: blas,
+        }
     }
-
-    // fn softmax<MT, T, T2>(&self, arr: MT, size: usize) where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr {
-    pub fn softmax<'a>(&self, x: &mut MutView<'a, CudaSlice<f32>>, n: usize) {
-        let f = self.gpu.get_func("module", "softmax").unwrap();
-        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&x.cudaview(), n)) }.unwrap();
-    }
-}
-
-impl GPU {
 
     pub fn matmul_cublas(&self, o: &mut MutView<'_, CudaSlice<f32>>, a: &View<'_, CudaSlice<f32>>, b: &View<'_, CudaSlice<f32>>, width: usize, o_rows: usize, o_cols: usize) {
     // pub fn matmul_cublas<A: DevicePtrMut<f32>, B: DevicePtr<f32>, C: DevicePtr<f32>>(&self, o: &mut A, a: &B, b: &C, width: usize, o_rows: usize, o_cols: usize) {
