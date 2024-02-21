@@ -1,10 +1,13 @@
 #[cfg(feature = "gpu")]
 pub mod hbm;
 pub mod ram;
+pub mod state;
 
 use std::{fs::File, io::BufReader, ops::{Range, RangeBounds, Bound}};
 use crate::utils::read::*;
-use self::ram::RunState;
+
+use self::state::RunState;
+
 
 // TODO: probably rename CPU/GPU to CPU/GPU "storage" later. The only difference
 // here is where we store the weights, CPU RAM or GPU HBM.
@@ -13,7 +16,7 @@ pub trait Transformer {
     fn from_file(cp_path: &str) -> Self;
     fn get_config(&self) -> Config;
     // fn sample(&mut self, temperature: f32) -> usize;
-    fn cpu_state(&self) -> &RunState;
+    fn cpu_state(&self) -> &RunState<Vec<f32>>;
 }
 
 pub struct View<'a, T: Storage> {

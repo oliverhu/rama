@@ -1,6 +1,6 @@
 use rayon::prelude::*;
 
-use crate::transformer::{ram::RunStateView, Config, MutView, View};
+use crate::transformer::{state::RunStateView, Config, MutView, View};
 
 use wide::f32x4;
 pub struct CPU {}

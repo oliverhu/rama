@@ -3,7 +3,8 @@ use cudarc::cublas::CudaBlas;
 use cudarc::driver::CudaSlice;
 use device::cpu::CPU;
 use device::gpu::GPU;
-use transformer::ram::{RunStateView, TransformerWeightsView};
+use transformer::ram::TransformerWeightsView;
+use transformer::state::RunStateView;
 use transformer::{Config, Transformer};
 #[cfg(not(feature="gpu"))]
 use transformer::ram::TransformerCPU;
@@ -76,7 +77,7 @@ fn main() {
     let mut transformer = TransformerCPU::from_file(path);
     let config = &transformer.get_config().clone();
     let wv = TransformerWeightsView::from_gpu_ws(&transformer.weights);
-    let mut rsv = RunStateView::from_gpu_rs(&mut transformer.state);
+    let mut rsv = RunStateView::from_rs(&mut transformer.state);
 
     let step = args.step;
     let prompt = args.prompt;
