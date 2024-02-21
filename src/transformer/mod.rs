@@ -7,18 +7,6 @@ pub mod infer;
 use std::{fs::File, io::BufReader, ops::{Range, RangeBounds, Bound}};
 use crate::utils::read::*;
 
-use self::state::RunState;
-
-// TODO: probably rename CPU/GPU to CPU/GPU "storage" later. The only difference
-// here is where we store the weights, CPU RAM or GPU HBM.
-pub trait Transformer {
-    // fn forward(&mut self, token: usize, pos: usize);
-    fn from_file(cp_path: &str) -> Self;
-    fn get_config(&self) -> Config;
-    // fn sample(&mut self, temperature: f32) -> usize;
-    fn cpu_state(&self) -> &RunState<Vec<f32>>;
-}
-
 pub struct View<'a, T: Storage> {
     pub data: &'a T,
     pub range: Range<usize>,
@@ -144,7 +132,7 @@ pub struct Config {
 }
 
 impl Config {
-    fn from_file(f: &mut BufReader<File>) -> Self {
+    pub fn from_file(f: &mut BufReader<File>) -> Self {
         let mut shared_weight = false;
         let c  = Self {
 

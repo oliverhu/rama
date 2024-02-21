@@ -1,6 +1,6 @@
 use std::{io::BufReader, fs::File};
 use crate::device::cpu::CPU;
-use super::{state::{RunState, TransformerWeights}, Config, Transformer};
+use super::{state::{RunState, TransformerWeights}, Config};
 pub struct TransformerCPU {
     pub config: Config,
     pub weights: TransformerWeights<Vec<f32>>,
@@ -8,7 +8,7 @@ pub struct TransformerCPU {
     pub device: CPU
 }
 
-impl<'a> Transformer for TransformerCPU {
+impl<'a> TransformerCPU {
     fn cpu_state(&self) -> &RunState<Vec<f32>> {
         &self.state
     }

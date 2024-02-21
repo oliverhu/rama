@@ -1,13 +1,10 @@
 use clap::Parser;
-#[cfg(feature="gpu")]
-use cudarc::cublas::CudaBlas;
-#[cfg(feature="gpu")]
-use cudarc::driver::CudaSlice;
 use device::cpu::CPU;
+use device::device::Device;
 #[cfg(feature="gpu")]
 use device::gpu::GPU;
-use transformer::state::{RunStateView, TransformerWeightsView};
-use transformer::{Config, Storage, Transformer};
+use transformer::state::{RunState, RunStateView, TransformerWeights, TransformerWeightsView};
+use transformer::{Config, Storage};
 #[cfg(not(feature="gpu"))]
 use transformer::ram::TransformerCPU;
 #[cfg(feature="gpu")]
@@ -23,9 +20,8 @@ mod device;
 mod transformer;
 mod utils;
 use utils::read::read_n;
-#[cfg(feature="gpu")]
-use crate::transformer::hbm;
-use crate::transformer::ram::{forward, sample};
+
+use crate::transformer::infer::forward;
 
 #[derive(Parser, Debug)]
 #[command(long_about = None)]
@@ -72,120 +68,38 @@ fn main() {
     let args = Args::parse();
     let path = &args.model;
     let token_path = &args.tokenizer;
-    #[cfg(feature="gpu")]
-    let transformer = &mut TransformerGPU::from_file(path);
 
-    #[cfg(not(feature="gpu"))]
-    let mut transformer = TransformerCPU::from_file(path);
-    let config = &transformer.get_config().clone();
-    let wv = TransformerWeightsView::from_gpu_ws(&transformer.weights);
-    let mut rsv = RunStateView::from_rs(&mut transformer.state);
+    let rd = &mut BufReader::new(File::open(path).unwrap());
+    let config = Config::from_file(rd);
+    let weights = TransformerWeights::from_file(rd, &config);
+    let state = RunState::from_config(&config);
+
+    let wv = TransformerWeightsView::from_gpu_ws(&weights);
+    let mut rsv = RunStateView::from_rs(&mut state);
 
     let step = args.step;
     let prompt = args.prompt;
     let temperature = args.temperature;
     let tokenizer = Tokenizer::new(token_path, config.vocab_size).unwrap();
-    if args.mode == "generate" {
-        let start: SystemTime = SystemTime::now();
-        let _ = generate(&config, &tokenizer, prompt, temperature, step.into(), &wv, &mut rsv, &transformer.device);
-        let elapsed = start.elapsed().unwrap();
-        println!("\n--------------------------------");
-        println!("elapsed: {}.{:03} s, avg tok/s: {}",
-             elapsed.as_secs(), elapsed.subsec_millis(),
-             (step - 1) as f32 / elapsed.as_secs_f32());
-    } else {
-        // let _ = chat(&mut transformer, &tokenizer, step.into());
-    }
-}
 
-fn chat<T>(transformer: &mut T,
-    tokenizer: &Tokenizer,
-    steps: usize) -> Result<()>
-    where T: Transformer
-{
-    let mut user_turn;
-    let mut next = 0;
-    let mut user_index = 0;
-    let mut token;
-    let mut pos;
-
-    let mut system_prompt = String::new();
-    let mut user_prompt = String::new();
-    let mut rendered_prompt;
-    let mut prompt_tokens = Vec::new();
-
-    print!("Enter system prompt (optional): ");
-                stdout().lock().flush()?;
-                stdin().read_line(&mut system_prompt)?;
-
-    loop {
-        pos = 0;
-        user_turn = true;
-        while pos < steps {
-            if user_turn {
-                print!("\nUser: ");
-                stdout().lock().flush()?;
-                stdin().read_line(&mut user_prompt)?;
-
-                if user_prompt.contains("EOS") {
-                    println!("Assistant: ending chat...");
-                    return Ok(());
-                }
-
-                // Render user/system prompts into llama2 chat schema
-                if pos == 0 && system_prompt.len() > 0 {
-                    rendered_prompt = format!("[INST] <<SYS>>{}<</SYS>>{} [/INST]", system_prompt, user_prompt);
-                } else {
-                    rendered_prompt = format!("[INST] {} [/INST]", user_prompt);
-                }
-
-                prompt_tokens = tokenizer.encode(&rendered_prompt);
-                user_turn = false;
-                user_index = 0;
-
-                print!("\nAssistant: ");
-                stdout().lock().flush()?;
-            }
-
-            if user_index < prompt_tokens.len() {
-                token = prompt_tokens[user_index];
-                user_index += 1;
-            } else {
-                token = next;
-            }
-
-            if token == 2 { user_turn = true; }
-
-            // forward(transformer.get_config(), wv, rsv, token, pos, device)
-            // forward(token, pos);
-            // next = transformer.sample(0.9);
-            pos += 1;
-
-            if user_index >= prompt_tokens.len() && next != 2 {
-                let mut token_str = tokenizer.vocab[next].clone();
-                token_str = decode(token_str);
-                print!("{}", token_str);
-                stdout().flush()?;
-            }
-            if next == 2 {
-                println!("")
-            };
-        }
-    }
+    let start: SystemTime = SystemTime::now();
+    let _ = generate(&config, &tokenizer, prompt, temperature, step.into(), &wv, &mut rsv, &device);
+    let elapsed = start.elapsed().unwrap();
+    println!("\n--------------------------------");
+    println!("elapsed: {}.{:03} s, avg tok/s: {}",
+            elapsed.as_secs(), elapsed.subsec_millis(),
+            (step - 1) as f32 / elapsed.as_secs_f32());
 
 }
 
-fn generate<'a, T: Storage>(cfg: &Config,
+fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
     tokenizer: &Tokenizer,
     prompt: String,
     temperature: f32,
     steps: usize,
     wv: &TransformerWeightsView<'a, T>,
     rsv: &mut RunStateView<'a, T>,
-    #[cfg(not(feature="gpu"))]
-    device: &CPU,
-    #[cfg(feature="gpu")]
-    device: &GPU
+    device: &D
 ) -> Result<()>
     {
     let prompt_tokens = if prompt.len() > 0 { tokenizer.encode(&prompt) } else { Vec::new() };
@@ -200,11 +114,7 @@ fn generate<'a, T: Storage>(cfg: &Config,
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
         } else {
-            #[cfg(not(feature="gpu"))]
-            next = sample(cfg, rsv, device, temperature);
-
-            #[cfg(feature="gpu")]
-            next = hbm::sample(cfg, rsv, device, temperature);// sample(temperature);
+            device.sample(cfg, rsv, temperature);
         }
 
         let mut token_str = tokenizer.vocab[next].clone();
