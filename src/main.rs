@@ -17,8 +17,6 @@ mod device;
 mod transformer;
 mod utils;
 use utils::read::read_n;
-#[cfg(feature="gpu")]
-use crate::device::gpu;
 use crate::transformer::infer::forward;
 
 #[derive(Parser, Debug)]
@@ -70,6 +68,7 @@ fn main() {
     let rd = &mut BufReader::new(File::open(path).unwrap());
     let config = Config::from_file(rd);
 
+    #[allow(unused_variables)]
     let device = CPU {};
     #[cfg(feature="gpu")]
     let device = GPU::new();

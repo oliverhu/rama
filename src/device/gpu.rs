@@ -53,6 +53,7 @@ impl MutView<'_, CudaSlice<f32>> {
         self.as_ref().slice(r)
     }
 
+    #[allow(dead_code)]
     fn cudamutview(&mut self) -> CudaViewMut<'_, f32> {
         let r = self.range.clone();
         self.as_mut().slice_mut(r)
@@ -220,9 +221,8 @@ impl GPU {
         }
     }
 
+    #[allow(dead_code)]
     pub fn matmul_cublas(&self, o: &mut MutView<'_, CudaSlice<f32>>, a: &View<'_, CudaSlice<f32>>, b: &View<'_, CudaSlice<f32>>, width: usize, o_rows: usize, o_cols: usize) {
-    // pub fn matmul_cublas<A: DevicePtrMut<f32>, B: DevicePtr<f32>, C: DevicePtr<f32>>(&self, o: &mut A, a: &B, b: &C, width: usize, o_rows: usize, o_cols: usize) {
-
         let blas_cfg: GemmConfig<f32> = GemmConfig {
             transa: NO_TRANS,
             transb: NO_TRANS,

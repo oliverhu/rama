@@ -118,6 +118,7 @@ pub struct TransformerWeightsView<'a, T: Storage> {
 }
 
 impl<'a, 'b: 'a> TransformerWeightsView<'a, Vec<f32>> {
+    #[allow(dead_code)]
     pub fn from_ws(ws: &'a TransformerWeights<Vec<f32>>) -> TransformerWeightsView<'a, Vec<f32>> {
         TransformerWeightsView {
             token_embedding_table: View::new(&ws.token_embedding_table),
