@@ -91,7 +91,7 @@ pub struct TransformerWeightsView<'a, T: Storage> {
     pub wcls: View<'a, T>,
 }
 
-impl<'a, 'b: 'a> TransformerWeightsView<'a, Vec<f32>> {
+impl<'a> TransformerWeightsView<'a, Vec<f32>> {
     #[allow(dead_code)]
     pub fn from_ws(ws: &'a TransformerWeights<Vec<f32>>) -> TransformerWeightsView<'a, Vec<f32>> {
         TransformerWeightsView {

@@ -92,7 +92,7 @@ impl TransformerWeights<CudaSlice<f32>> {
 }
 
 
-impl<'a, 'b: 'a> TransformerWeightsView<'a, CudaSlice<f32>> {
+impl<'a> TransformerWeightsView<'a, CudaSlice<f32>> {
 
     pub fn from_gpu_ws(ws: &'a TransformerWeights<CudaSlice<f32>>) -> TransformerWeightsView<'a, CudaSlice<f32>> {
         TransformerWeightsView {
