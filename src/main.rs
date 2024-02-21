@@ -17,7 +17,8 @@ mod device;
 mod transformer;
 mod utils;
 use utils::read::read_n;
-
+#[cfg(feature="gpu")]
+use crate::device::gpu;
 use crate::transformer::infer::forward;
 
 #[derive(Parser, Debug)]
@@ -68,14 +69,27 @@ fn main() {
 
     let rd = &mut BufReader::new(File::open(path).unwrap());
     let config = Config::from_file(rd);
-    let weights = TransformerWeights::from_file(rd, &config);
+
+    let device = CPU {};
+    #[cfg(feature="gpu")]
+    let device = GPU::new();
+
+    #[allow(unused_mut)]
+    let mut weights = TransformerWeights::from_file(rd, &config);
+    #[cfg(feature="gpu")]
+    let weights = TransformerWeights::from_weight(&mut weights, &device);
     let mut state = RunState::from_config(&config);
 
-    // #[cfg(not(feature="gpu"))]
+    #[cfg(feature="gpu")]
+    let mut state = RunState::from_state(&mut state, &device);
+
+    //
     // #[cfg(feature="gpu")]
+    #[cfg(not(feature="gpu"))]
     let wv = TransformerWeightsView::from_ws(&weights);
     #[cfg(feature="gpu")]
     let wv = TransformerWeightsView::from_gpu_ws(&weights);
+
     let mut rsv = RunStateView::from_rs(&mut state);
 
     let step = args.step;
@@ -85,9 +99,6 @@ fn main() {
 
     let start: SystemTime = SystemTime::now();
 
-    let device = CPU {};
-    #[cfg(feature="gpu")]
-    let device = GPU::new();
 
     let _ = generate(&config, &tokenizer, prompt, temperature, step.into(), &wv, &mut rsv, &device);
     let elapsed = start.elapsed().unwrap();
