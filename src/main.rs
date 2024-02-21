@@ -5,10 +5,7 @@ use device::device::Device;
 use device::gpu::GPU;
 use transformer::state::{RunState, RunStateView, TransformerWeights, TransformerWeightsView};
 use transformer::{Config, Storage};
-#[cfg(not(feature="gpu"))]
-use transformer::ram::TransformerCPU;
-#[cfg(feature="gpu")]
-use transformer::hbm::TransformerGPU;
+
 use core::f32;
 use std::collections::HashMap;
 use std::fs::File;
@@ -72,8 +69,12 @@ fn main() {
     let rd = &mut BufReader::new(File::open(path).unwrap());
     let config = Config::from_file(rd);
     let weights = TransformerWeights::from_file(rd, &config);
-    let state = RunState::from_config(&config);
+    let mut state = RunState::from_config(&config);
 
+    // #[cfg(not(feature="gpu"))]
+    // #[cfg(feature="gpu")]
+    let wv = TransformerWeightsView::from_ws(&weights);
+    #[cfg(feature="gpu")]
     let wv = TransformerWeightsView::from_gpu_ws(&weights);
     let mut rsv = RunStateView::from_rs(&mut state);
 
@@ -83,6 +84,11 @@ fn main() {
     let tokenizer = Tokenizer::new(token_path, config.vocab_size).unwrap();
 
     let start: SystemTime = SystemTime::now();
+
+    let device = CPU {};
+    #[cfg(feature="gpu")]
+    let device = GPU::new();
+
     let _ = generate(&config, &tokenizer, prompt, temperature, step.into(), &wv, &mut rsv, &device);
     let elapsed = start.elapsed().unwrap();
     println!("\n--------------------------------");
@@ -114,7 +120,7 @@ fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
         } else {
-            device.sample(cfg, rsv, temperature);
+            next = device.sample(cfg, rsv, temperature);
         }
 
         let mut token_str = tokenizer.vocab[next].clone();
