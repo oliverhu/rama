@@ -28,8 +28,8 @@ pub fn range_from(range: impl RangeBounds<usize>, max_len: usize) -> Range<usize
         (Bound::Excluded(s), Bound::Included(e)) => *s + 1..*e + 1,
         (Bound::Excluded(s), Bound::Excluded(e)) => *s + 1..*e,
         (Bound::Excluded(s), Bound::Unbounded) => *s + 1..max_len,
-        (Bound::Unbounded, Bound::Included(e)) => 0..max_len,
-        (Bound::Unbounded, Bound::Excluded(e)) => 0..max_len - 1,
+        (Bound::Unbounded, Bound::Included(e)) => 0..*e + 1,
+        (Bound::Unbounded, Bound::Excluded(e)) => 0..*e,
         (Bound::Unbounded, Bound::Unbounded) => 0..max_len,
     }
 }

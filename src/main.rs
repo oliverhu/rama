@@ -10,7 +10,7 @@ use core::f32;
 use std::collections::HashMap;
 use std::fs::File;
 use std::time::SystemTime;
-use std::io::{prelude::*, BufReader, Result, stdout, stdin};
+use std::io::{prelude::*, BufReader, Result, stdout};
 use std::path::Path;
 use byteorder::ByteOrder;
 mod device;
