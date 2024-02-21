@@ -2,12 +2,12 @@
 pub mod hbm;
 pub mod ram;
 pub mod state;
+pub mod infer;
 
 use std::{fs::File, io::BufReader, ops::{Range, RangeBounds, Bound}};
 use crate::utils::read::*;
 
 use self::state::RunState;
-
 
 // TODO: probably rename CPU/GPU to CPU/GPU "storage" later. The only difference
 // here is where we store the weights, CPU RAM or GPU HBM.
