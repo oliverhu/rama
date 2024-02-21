@@ -1,6 +1,7 @@
 use std::{io::BufReader, fs::File};
 use crate::device::cpu::CPU;
-use super::{Config, MutView, Storage, Transformer, View};
+use super::{hbm::{RunStateGPU, TransformerWeightsGPU}, Config, MutView, Storage, Transformer, View};
+use cudarc::driver::CudaSlice;
 use rand_chacha::ChaCha20Rng;
 use rand::{Rng, SeedableRng};
 use crate::utils::read::*;
@@ -11,7 +12,7 @@ pub struct TransformerCPU {
     pub device: CPU
 }
 
-pub fn forward<'a>(cfg: &Config, wv: &TransformerWeightsView<'a, Vec<f32>>,
+pub fn forward<'a, T>(cfg: &Config, wv: &TransformerWeightsView<'a, Vec<f32>>,
                    rsv: &mut RunStateView<'a, Vec<f32>>, token: usize, pos: usize,
                    device: &CPU
                 ) {
@@ -186,6 +187,36 @@ pub struct TransformerWeightsView<'a, T: Storage> {
     pub wcls: Option<View<'a, T>>,
 }
 
+impl<'a, 'b: 'a> TransformerWeightsView<'a, CudaSlice<f32>> {
+
+    pub fn from_gpu_ws(ws: &'a TransformerWeightsGPU) -> TransformerWeightsView<'a, CudaSlice<f32>> {
+        TransformerWeightsView {
+            token_embedding_table: View::new(&ws.token_embedding_table),
+            rms_att_weight: View::new(&ws.rms_att_weight),
+            rms_ffn_weight: View::new(&ws.rms_ffn_weight),
+            wq: View::new(&ws.wq),
+            wk: View::new(&ws.wk),
+            wv: View::new(&ws.wv),
+            wo: View::new(&ws.wo),
+            w1: View::new(&ws.w1),
+            w2: View::new(&ws.w2),
+            w3: View::new(&ws.w3),
+            rms_final_weight: View::new(&ws.rms_final_weight),
+            freq_cis_real: View::new(&ws.freq_cis_real),
+            freq_cis_imag: View::new(&ws.freq_cis_imag),
+            wcls: {
+                if ws.wcls_exists {
+                  Some(View::new(&ws.wcls))
+                } else {
+                  None
+                }
+            },
+            // wcls: Some(View::new(&ws.freq_cis_imag)),
+        }
+
+    }
+}
+
 impl<'a, 'b: 'a> TransformerWeightsView<'a, Vec<f32>> {
 
     pub fn from_ws(ws: &'a TransformerWeights) -> TransformerWeightsView<'a, Vec<f32>> {
@@ -278,6 +309,25 @@ pub struct RunStateView<'a, T: Storage> {
 
 impl<'a> RunStateView<'a, Vec<f32>> {
     pub fn from_rs(rs: &mut RunState) -> RunStateView<'_, Vec<f32>> {
+        RunStateView {
+            x: MutView::new(&mut rs.x),
+            xb: MutView::new(&mut rs.xb),
+            xb2: MutView::new(&mut rs.xb2),
+            hb: MutView::new(&mut rs.hb),
+            hb2: MutView::new(&mut rs.hb2),
+            q: MutView::new(&mut rs.q),
+            k: MutView::new(&mut rs.k),
+            v: MutView::new(&mut rs.v),
+            att: MutView::new(&mut rs.att),
+            logits: MutView::new(&mut rs.logits),
+            key_cache: MutView::new(&mut rs.key_cache),
+            value_cache: MutView::new(&mut rs.value_cache),
+        }
+    }
+}
+
+impl<'a> RunStateView<'a, CudaSlice<f32>> {
+    pub fn from_gpu_rs(rs: &mut RunStateGPU) -> RunStateView<'_, CudaSlice<f32>> {
         RunStateView {
             x: MutView::new(&mut rs.x),
             xb: MutView::new(&mut rs.xb),

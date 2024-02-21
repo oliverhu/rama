@@ -21,7 +21,7 @@ pub struct RunStateGPU {
 }
 
 impl RunStateGPU {
-    pub fn from_state(state: &RunState, device: &GPU) -> Self {
+    pub fn from_state(state: &mut RunState, device: &GPU) -> Self {
         Self {
             x: allocate(device, &state.x.as_mut()),
             xb: allocate(device, &state.xb.as_mut()),
@@ -59,23 +59,23 @@ impl RunStateGPU {
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct TransformerWeightsGPU {
-    token_embedding_table: CudaSlice<f32>,
-    rms_att_weight: CudaSlice<f32>,
-    rms_ffn_weight: CudaSlice<f32>,
+    pub token_embedding_table: CudaSlice<f32>,
+    pub rms_att_weight: CudaSlice<f32>,
+    pub rms_ffn_weight: CudaSlice<f32>,
 
-    wq: CudaSlice<f32>,
-    wk: CudaSlice<f32>,
-    wv: CudaSlice<f32>,
-    wo: CudaSlice<f32>,
-    w1: CudaSlice<f32>,
-    w2: CudaSlice<f32>,
-    w3: CudaSlice<f32>,
+    pub wq: CudaSlice<f32>,
+    pub wk: CudaSlice<f32>,
+    pub wv: CudaSlice<f32>,
+    pub wo: CudaSlice<f32>,
+    pub w1: CudaSlice<f32>,
+    pub w2: CudaSlice<f32>,
+    pub w3: CudaSlice<f32>,
 
-    rms_final_weight: CudaSlice<f32>,
-    freq_cis_real: CudaSlice<f32>,
-    freq_cis_imag: CudaSlice<f32>,
-    wcls_exists: bool,
-    wcls: CudaSlice<f32>,
+    pub rms_final_weight: CudaSlice<f32>,
+    pub freq_cis_real: CudaSlice<f32>,
+    pub freq_cis_imag: CudaSlice<f32>,
+    pub wcls_exists: bool,
+    pub wcls: CudaSlice<f32>,
 }
 
 // Allocate data in GPU memory and return a pointer to the location. Leak this object since the
@@ -85,7 +85,7 @@ fn allocate(gpu: &GPU, data: &Vec<f32>) -> CudaSlice<f32> {
 }
 
 impl TransformerWeightsGPU {
-    pub fn from_weight(tw: &TransformerWeights, device: &GPU) -> Self {
+    pub fn from_weight(tw: &mut TransformerWeights, device: &GPU) -> Self {
         let token_embedding_table = allocate(device, &tw.token_embedding_table.as_mut());
         let rms_att_weight = allocate(device, &tw.rms_att_weight.as_mut());
         let rms_ffn_weight = allocate(device, &tw.rms_ffn_weight.as_mut());
@@ -105,7 +105,7 @@ impl TransformerWeightsGPU {
         match &tw.wcls {
             Some(val) =>
             {
-                wcls = allocate(device, &val.as_mut());
+                wcls = allocate(device, &val.as_ref());
                 wcls_exists = true;
             }
             None => {wcls = token_embedding_table.clone();},
@@ -156,7 +156,7 @@ pub fn forward<'a>(cfg: &Config, wv: &TransformerWeightsView<'a, CudaSlice<f32>>
     let hidden_dim = cfg.hidden_dim;
     let head_size = dim / cfg.n_heads;
 
-    device.copy_from_slice(&mut gpu_weights.token_embedding_table.slice(token * dim..), &rsv.x, dim);
+    device.copy_from_slice(&mut rsv.x, &gpu_weights.token_embedding_table.slice(token * dim..), dim);
 
     let pos_real = gpu_weights.freq_cis_real.slice(pos * (head_size / 2)..);
     let pos_img = gpu_weights.freq_cis_imag.slice(pos * (head_size / 2)..);
@@ -164,61 +164,57 @@ pub fn forward<'a>(cfg: &Config, wv: &TransformerWeightsView<'a, CudaSlice<f32>>
 
     for layer in 0..cfg.n_layers {
 
-        gpu.rmsnorm(&rsv.xb, &rsv.x, &gpu_weights.rms_att_weight.slice(layer * dim..), dim as i32);
+        device.rmsnorm(&mut rsv.xb, &rsv.x.as_view(), &gpu_weights.rms_att_weight.slice(layer * dim..), dim);
 
-        device.matmul_cublas(&mut rsv.q, &gpu_weights.wq.slice(layer * dim * dim..), &rsv.xb, dim, dim, 1);
+        device.matmul_cublas(&mut rsv.q, &gpu_weights.wq.slice(layer * dim * dim..), &rsv.xb.as_view(), dim, dim, 1);
         // device.matmul_cublas(&mut rsv.q, &gpu_weights.wq.slice(layer * dim * dim..), &rsv.xb, dim, dim, 1);
-        device.matmul_cublas(&mut rsv.q, &gpu_weights.wq.slice(layer * dim * dim..), &rsv.xb, dim, dim, 1);
-
-        device.matmul_cublas(&mut rsv.k, &gpu_weights.wk.slice(layer * dim * dim..), &rsv.xb, dim, dim, 1);
-
-        device.matmul_cublas(&mut rsv.v, &gpu_weights.wv.slice(layer * dim * dim..), &rsv.xb, dim, dim, 1);
+        device.matmul_cublas(&mut rsv.q, &gpu_weights.wq.slice(layer * dim * dim..), &rsv.xb.as_view(), dim, dim, 1);
+        device.matmul_cublas(&mut rsv.k, &gpu_weights.wk.slice(layer * dim * dim..), &rsv.xb.as_view(), dim, dim, 1);
+        device.matmul_cublas(&mut rsv.v, &gpu_weights.wv.slice(layer * dim * dim..), &rsv.xb.as_view(), dim, dim, 1);
 
         for h in 0..cfg.n_heads {
 
-            let q = &rsv.q.slice(h * head_size..);
-            let k = &rsv.k.slice(h * head_size..);
-            device.apply_position(q, k, &pos_real, &pos_img, cfg.n_heads as i32, head_size as i32);
+            let q = &mut rsv.q.mut_slice(h * head_size..);
+            let k = &mut rsv.k.mut_slice(h * head_size..);
+            device.apply_position(q, k, &pos_real, &pos_img, head_size);
         }
 
         // -- %%
         let lo = layer * cfg.seq_len * dim;
-        device.copy_from_slice(&rsv.k, &rsv.key_cache.slice(lo + pos * dim..), dim as i32);
-        device.copy_from_slice(&rsv.v, &rsv.value_cache.slice(lo + pos * dim..), dim as i32);
+        device.copy_from_slice(&mut rsv.key_cache.mut_slice(lo + pos * dim..), &rsv.k.as_view(), dim);
+        device.copy_from_slice(&mut rsv.value_cache.mut_slice(lo + pos * dim..), &rsv.v.as_view(), dim);
         // self.state.into_state(&mut self._cpu_state);
-        device.multi_head_attention(&gpu_state, &cfg, layer, pos);
+        device.multi_head_attention(rsv, &cfg, layer, pos);
         // self.state.into_state(&mut self._cpu_state);
 
-        device.matmul_cublas(&mut rsv.xb2, &gpu_weights.wo.slice(layer * dim * dim..), &rsv.xb, dim, dim, 1);
+        device.matmul_cublas(&mut rsv.xb2, &gpu_weights.wo.slice(layer * dim * dim..), &rsv.xb.as_view(), dim, dim, 1);
 
-        device.array_add(&rsv.x, &rsv.xb2, dim);
+        device.array_add(&mut rsv.x, &rsv.xb2.as_view(), dim);
 
-        device.rmsnorm(&rsv.xb, &rsv.x, &gpu_weights.rms_ffn_weight.slice(layer * dim..), dim as i32);
+        device.rmsnorm(&mut rsv.xb, &rsv.x.as_view(), &gpu_weights.rms_ffn_weight.slice(layer * dim..), dim);
 
-
-
-        device.matmul_cublas(&mut rsv.hb, &gpu_weights.w1.slice(layer * hidden_dim * dim..), &rsv.xb, dim, hidden_dim, 1);
-        device.matmul_cublas(&mut rsv.hb2, &gpu_weights.w3.slice(layer * hidden_dim * dim..), &rsv.xb, dim, hidden_dim, 1);
+        device.matmul_cublas(&mut rsv.hb, &gpu_weights.w1.slice(layer * hidden_dim * dim..), &rsv.xb.as_view(), dim, hidden_dim, 1);
+        device.matmul_cublas(&mut rsv.hb2, &gpu_weights.w3.slice(layer * hidden_dim * dim..), &rsv.xb.as_view(), dim, hidden_dim, 1);
 
         //---
-        device.sinu(&rsv.hb, hidden_dim as i32);
+        device.sinu(&mut rsv.hb, hidden_dim);
 
 
-        device.array_mult(&rsv.hb, &rsv.hb2, hidden_dim as i32);
+        device.array_mult(&mut rsv.hb, &rsv.hb2.as_view(), hidden_dim);
 
 
-        device.matmul_cublas(&mut rsv.xb, &gpu_weights.w2.slice(layer * dim * hidden_dim..), &rsv.hb, hidden_dim, dim, 1);
+        device.matmul_cublas(&mut rsv.xb, &gpu_weights.w2.slice(layer * dim * hidden_dim..), &rsv.hb.as_view(), hidden_dim, dim, 1);
 
-        device.array_add(&rsv.x, &rsv.xb, dim);
+        device.array_add(&mut rsv.x, &rsv.xb.as_view(), dim);
 
     }
 
 
-    device.copy_from_slice(&rsv.x, &rsv.xb, dim as i32);
+    device.copy_from_slice(&mut rsv.xb, &rsv.x.as_view(), dim);
 
-    device.rmsnorm(&rsv.x, &rsv.xb, &gpu_weights.rms_final_weight, dim as i32);
+    device.rmsnorm(&mut rsv.x, &rsv.xb.as_view(), &gpu_weights.rms_final_weight, dim);
 
-    device.matmul_cublas(&mut rsv.logits, &gpu_weights.wcls, &rsv.x, dim, cfg.vocab_size, 1);
+    device.matmul_cublas(&mut rsv.logits, &gpu_weights.wcls.as_ref().unwrap(), &rsv.x.as_view(), dim, cfg.vocab_size, 1);
 
 }
 
@@ -230,12 +226,12 @@ impl Transformer for TransformerGPU {
 
 
     fn from_file(cp_path: &str) -> Self {
-        let tcpu = TransformerCPU::from_file(cp_path);
+        let mut tcpu = TransformerCPU::from_file(cp_path);
         let gpu = GPU::new();
         Self {
             config: tcpu.get_config(),
-            weights: TransformerWeightsGPU::from_weight(&tcpu.weights, &gpu),
-            state: RunStateGPU::from_state(&tcpu.state, &gpu),
+            weights: TransformerWeightsGPU::from_weight(&mut tcpu.weights, &gpu),
+            state: RunStateGPU::from_state(&mut tcpu.state, &gpu),
             device: gpu,
             _cpu_state: tcpu.state,
         }
@@ -246,12 +242,14 @@ impl Transformer for TransformerGPU {
     }
 
 }
-fn sample(temperature: f32) -> usize {
+
+pub fn sample<'a>(cfg: &Config, rsv: &mut RunStateView<'a, CudaSlice<f32>>, device: &GPU, temperature: f32) -> usize {
+// fn sample(temperature: f32) -> usize {
     let next;
     let rng_seed = 10;
     let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
     // let mut logits = vec![0.0f32; self.config.vocab_size];
-    let mut logits = self.device.gpu.sync_reclaim(self.state.logits.clone()).unwrap();
+    let mut logits = device.gpu.sync_reclaim(rsv.logits.as_ref().clone()).unwrap();
     // unsafe { let _ = memcpy_dtoh_sync(&mut logits, self.state.logits); };
     if temperature == 0.0 {
         // greedy decoding, choose argmax
@@ -267,7 +265,7 @@ fn sample(temperature: f32) -> usize {
         let cpu = CPU {};
         cpu.softmax_num(&mut logits, 0);
         // next = sample(&transformer.state.logits, &mut rng);
-        next = sample_top_q(&logits, self.config.vocab_size, temperature, &mut rng);
+        next = sample_top_q(&logits, cfg.vocab_size, temperature, &mut rng);
 
     }
     next

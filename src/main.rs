@@ -1,5 +1,8 @@
 use clap::Parser;
+use cudarc::cublas::CudaBlas;
+use cudarc::driver::CudaSlice;
 use device::cpu::CPU;
+use device::gpu::GPU;
 use transformer::ram::{RunStateView, TransformerWeightsView};
 use transformer::{Config, Transformer};
 #[cfg(not(feature="gpu"))]
@@ -18,6 +21,7 @@ mod transformer;
 mod utils;
 use utils::read::read_n;
 
+use crate::transformer::hbm;
 use crate::transformer::ram::{forward, sample};
 
 #[derive(Parser, Debug)]
@@ -68,12 +72,11 @@ fn main() {
     #[cfg(feature="gpu")]
     let transformer = &mut TransformerGPU::from_file(path);
 
-
     #[cfg(not(feature="gpu"))]
     let mut transformer = TransformerCPU::from_file(path);
     let config = &transformer.get_config().clone();
-    let wv = TransformerWeightsView::from_ws(&transformer.weights);
-    let mut rsv = RunStateView::from_rs(&mut transformer.state);
+    let wv = TransformerWeightsView::from_gpu_ws(&transformer.weights);
+    let mut rsv = RunStateView::from_gpu_rs(&mut transformer.state);
 
     let step = args.step;
     let prompt = args.prompt;
@@ -174,9 +177,9 @@ fn generate<'a>(cfg: &Config,
     prompt: String,
     temperature: f32,
     steps: usize,
-    wv: &TransformerWeightsView<'a, Vec<f32>>,
-    rsv: &mut RunStateView<'a, Vec<f32>>,
-    device: &CPU
+    wv: &TransformerWeightsView<'a, CudaSlice<f32>>,
+    rsv: &mut RunStateView<'a, CudaSlice<f32>>,
+    device: &GPU
 ) -> Result<()>
     {
     let prompt_tokens = if prompt.len() > 0 { tokenizer.encode(&prompt) } else { Vec::new() };
@@ -186,13 +189,12 @@ fn generate<'a>(cfg: &Config,
     let mut next;
 
     while pos < steps {
-        forward(cfg, wv, rsv, token, pos, device);
-        // transformer.forward( token, pos);
+        hbm::forward(cfg, wv, rsv, token, pos, device);
 
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
         } else {
-            next = sample(cfg, rsv, device, temperature);// sample(temperature);
+            next = hbm::sample(cfg, rsv, device, temperature);// sample(temperature);
         }
 
         let mut token_str = tokenizer.vocab[next].clone();
@@ -323,27 +325,3 @@ fn decode(str: String) -> String {
     }
 
 }
-// print the time of a function.
-// fn benchmark<G>(f: G, name: String)
-// where
-// G: FnOnce()
-// {
-//     let start = Instant::now();
-//     f();
-//     let duration: Duration = start.elapsed();
-//     println!("Time elapsed in {} is: {:?}", name, duration);
-// }
-
-
-// Naive sampling worked well for tinystories but performs really bad for llama model inference.
-// fn sample(probabilities: &Vec<f32>, rng: &mut ChaCha20Rng) -> usize {
-//     let r = rng.gen::<f32>();
-//     let mut cdf = 0.0;
-//     for (i, &p) in probabilities.iter().enumerate() {
-//         cdf += p;
-//         if r < cdf {
-//             return i;
-//         }
-//     }
-//     probabilities.len() - 1
-// }

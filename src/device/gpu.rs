@@ -43,17 +43,20 @@ pub struct GPU {
 
 impl MutView<'_, CudaSlice<f32>> {
     fn cudaview(&self) -> CudaView<'_, f32> {
-        self.as_mut().slice(self.range)
+        let r = self.range.clone();
+        self.as_ref().slice(r)
     }
 
-    fn cudamutview(&self) -> CudaViewMut<'_, f32> {
-        self.as_mut().slice_mut(self.range)
+    fn cudamutview(&mut self) -> CudaViewMut<'_, f32> {
+        let r = self.range.clone();
+        self.as_mut().slice_mut(r)
     }
 }
 
 impl View<'_, CudaSlice<f32>> {
     fn cudaview(&self) -> CudaView<'_, f32> {
-        self.as_ref().slice(self.range)
+        let r = self.range.clone();
+        self.as_ref().slice(r)
     }
 }
 
