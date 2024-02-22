@@ -8,7 +8,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
 use crate::transformer::infer::sample_top_q;
-use crate::transformer::state::RunStateView;
+use crate::transformer::state::{RunState, RunStateView};
 use crate::transformer::{Config, MutView, View};
 
 use super::cpu::CPU;
@@ -195,6 +195,21 @@ impl Device<CudaSlice<f32>> for GPU {
             unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&x.cudaview(), n)) }.unwrap();
         }
 
+
+    fn to_cpu(&self, state: &RunStateView<CudaSlice<f32>>, cpu_state: &mut RunState<Vec<f32>>) {
+        self.gpu.dtoh_sync_copy_into(state.x.as_ref(), &mut cpu_state.x.as_mut()).unwrap();
+        self.gpu.dtoh_sync_copy_into(state.xb.as_ref(), &mut cpu_state.xb.as_mut()).unwrap();
+        self.gpu.dtoh_sync_copy_into(state.xb2.as_ref(), &mut cpu_state.xb2.as_mut()).unwrap();
+        self.gpu.dtoh_sync_copy_into(state.hb.as_ref(), &mut cpu_state.hb.as_mut()).unwrap();
+        self.gpu.dtoh_sync_copy_into(state.hb2.as_ref(), &mut cpu_state.hb2.as_mut()).unwrap();
+        self.gpu.dtoh_sync_copy_into(state.q.as_ref(), &mut cpu_state.q.as_mut()).unwrap();
+        self.gpu.dtoh_sync_copy_into(state.k.as_ref(), &mut cpu_state.k.as_mut()).unwrap();
+        self.gpu.dtoh_sync_copy_into(state.v.as_ref(), &mut cpu_state.v.as_mut()).unwrap();
+        self.gpu.dtoh_sync_copy_into(state.att.as_ref(), &mut cpu_state.att.as_mut()).unwrap();
+        self.gpu.dtoh_sync_copy_into(state.logits.as_ref(), &mut cpu_state.logits.as_mut()).unwrap();
+        self.gpu.dtoh_sync_copy_into(state.key_cache.as_ref(), &mut cpu_state.key_cache.as_mut()).unwrap();
+        self.gpu.dtoh_sync_copy_into(state.value_cache.as_ref(), &mut cpu_state.value_cache.as_mut()).unwrap();
+    }
 
 }
 

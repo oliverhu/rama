@@ -1,4 +1,4 @@
-use crate::transformer::{state::RunStateView, Config, MutView, Storage, View};
+use crate::transformer::{state::{RunState, RunStateView}, Config, MutView, Storage, View};
 
 pub trait Device<T: Storage> {
     fn array_add(&self, target: &mut MutView<'_, T>, source: &View<'_, T>, n: usize);
@@ -15,5 +15,11 @@ pub trait Device<T: Storage> {
     fn softmax<'a>(&self, x: &mut MutView<'a, T>, n: usize);
 
     fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, T>, temperature: f32) -> usize;
+
+    // debugging related.
+
+    // copy current state to a run state view container for debugging.
+    fn to_cpu(&self, state: &RunStateView<T>, cpu_state: &mut RunState<Vec<f32>>);
+
 
 }

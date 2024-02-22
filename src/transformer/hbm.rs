@@ -51,7 +51,6 @@ impl RunState<CudaSlice<f32>> {
     }
 }
 
-
 impl TransformerWeights<CudaSlice<f32>> {
     pub fn from_weight(tw: &mut TransformerWeights<Vec<f32>>, device: &GPU) -> Self {
         let token_embedding_table = allocate(device, &tw.token_embedding_table.as_mut());
@@ -84,13 +83,12 @@ impl TransformerWeights<CudaSlice<f32>> {
             rms_final_weight: rms_final_weight,
             freq_cis_real: freq_cis_real,
             freq_cis_imag: freq_cis_imag,
-            wcls_exists: true,
+            wcls_exists: tw.wcls_exists,
             wcls,
         }
 
     }
 }
-
 
 impl<'a> TransformerWeightsView<'a, CudaSlice<f32>> {
 
@@ -109,7 +107,13 @@ impl<'a> TransformerWeightsView<'a, CudaSlice<f32>> {
             rms_final_weight: View::new(&ws.rms_final_weight),
             freq_cis_real: View::new(&ws.freq_cis_real),
             freq_cis_imag: View::new(&ws.freq_cis_imag),
-            wcls: View::new(&ws.wcls),
+            wcls: {
+                if ws.wcls_exists {
+                    View::new(&ws.wcls)
+                } else {
+                    View::new(&ws.token_embedding_table)
+                }
+            },
             wcls_exists: ws.wcls_exists
         }
 

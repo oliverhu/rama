@@ -2,7 +2,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
 
-use crate::transformer::{infer::sample_top_q, state::RunStateView, Config, MutView, View};
+use crate::transformer::{infer::sample_top_q, state::{RunState, RunStateView}, Config, MutView, View};
 
 use wide::f32x4;
 
@@ -188,6 +188,9 @@ impl Device<Vec<f32>> for CPU {
         next
     }
 
+    fn to_cpu(&self, _state: &RunStateView<Vec<f32>>, _cpu_state: &mut RunState<Vec<f32>>) {
+        // no need to do anything since it is already CPU.
+    }
 }
 
 impl CPU {
