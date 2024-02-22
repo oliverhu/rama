@@ -110,19 +110,6 @@ extern "C" __global__ void calculate_attention(float *xb, float *att, float *q, 
 
         }
         softmax(att_t, pos + 1);
-
-        // for (int i = 0; i < head_size; i++) {
-        //     xb_t[i] = 0;
-        // }
-        // for (int t = 0; t < pos + 1; t++) {
-        //     int koff = loff + t * dim + h * head_size;
-        //     float *v_c = v_cache + koff;
-        //     float a = att_t[t];
-        //     for (int i = 0; i < head_size; i++) {
-        //         xb_t[i] += a * v_c[i];
-        //     }
-
-        // }
     }
 }
 

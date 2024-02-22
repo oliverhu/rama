@@ -130,7 +130,6 @@ impl Device<CudaSlice<f32>> for GPU {
 
     }
     fn copy_from_slice(&self, target: &mut MutView<'_, CudaSlice<f32>>, source: &View<'_, CudaSlice<f32>>, n: usize) {
-    // pub fn copy_from_slice<S: DeviceRepr, D: DeviceRepr>(&self, src: S, dest: D, n: i32) {
         let f = self.gpu.get_func("module", "copy_from_slice").unwrap();
         unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&source.cudaview(), &target.cudaview(), n,)).unwrap(); };
     }
@@ -147,35 +146,32 @@ impl Device<CudaSlice<f32>> for GPU {
     }
 
     fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, CudaSlice<f32>>, temperature: f32) -> usize {
-        // fn sample(temperature: f32) -> usize {
-            let next;
-            let rng_seed = 10;
-            let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
-            // let mut logits = vec![0.0f32; self.config.vocab_size];
-            let mut logits = self.gpu.sync_reclaim(rsv.logits.as_ref().clone()).unwrap();
-            // unsafe { let _ = memcpy_dtoh_sync(&mut logits, self.state.logits); };
-            if temperature == 0.0 {
-                // greedy decoding, choose argmax
-                next = logits.iter().enumerate()
-                    .reduce(|(i1, v1), (i2, v2)| if v1 > v2 { (i1, v1) } else { (i2, v2) })
-                    .map(|(i, _)| i).unwrap();
-            } else {
-                // temperature scaling
-                if temperature < 1.0 {
-                    logits.iter_mut().for_each(|z| *z /= temperature);
-                }
-                // compute probabilities
-                let cpu = CPU {};
-                cpu.softmax_num(&mut logits, 0);
-                // next = sample(&transformer.state.logits, &mut rng);
-                next = sample_top_q(&logits, cfg.vocab_size, temperature, &mut rng);
+        let next;
+        let rng_seed = 10;
+        let mut rng = ChaCha20Rng::seed_from_u64(rng_seed);
+        let mut logits = self.gpu.sync_reclaim(rsv.logits.as_ref().clone()).unwrap();
 
+        if temperature == 0.0 {
+            // greedy decoding, choose argmax
+            next = logits.iter().enumerate()
+                .reduce(|(i1, v1), (i2, v2)| if v1 > v2 { (i1, v1) } else { (i2, v2) })
+                .map(|(i, _)| i).unwrap();
+        } else {
+            // temperature scaling
+            if temperature < 1.0 {
+                logits.iter_mut().for_each(|z| *z /= temperature);
             }
-            next
+            // compute probabilities
+            let cpu = CPU {};
+            cpu.softmax_num(&mut logits, 0);
+            // next = sample(&transformer.state.logits, &mut rng); // Greedy sampling doesn't work at all..
+            next = sample_top_q(&logits, cfg.vocab_size, temperature, &mut rng);
+
+        }
+        next
     }
 
     fn matmul_1d(&self, o: &mut MutView<'_, CudaSlice<f32>>, w: &View<'_, CudaSlice<f32>>, x: &View<'_, CudaSlice<f32>>, n: usize) {
-        // fn matmul_1d<MT, T, T2>(&self, o: MT, w: T, x: T2, n: usize) where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr{
             self.matmul(o, w, x, n, n, 1)
         }
 
@@ -189,7 +185,6 @@ impl Device<CudaSlice<f32>> for GPU {
             unsafe { f.launch(cfg, (&a.cudaview(), &b.cudaview(), &o.cudaview(), width, o_rows, o_cols)) }.unwrap();
         }
 
-        // fn softmax<MT, T, T2>(&self, arr: MT, size: usize) where MT: DeviceRepr, T: DeviceRepr, T2: DeviceRepr {
         fn softmax<'a>(&self, x: &mut MutView<'a, CudaSlice<f32>>, n: usize) {
             let f = self.gpu.get_func("module", "softmax").unwrap();
             unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&x.cudaview(), n)) }.unwrap();
