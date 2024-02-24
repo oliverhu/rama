@@ -173,23 +173,28 @@ impl Device<CudaSlice<f32>> for GPU {
 
     fn matmul_1d(&self, o: &mut MutView<'_, CudaSlice<f32>>, w: &View<'_, CudaSlice<f32>>, x: &View<'_, CudaSlice<f32>>, n: usize) {
             self.matmul(o, w, x, n, n, 1)
-        }
+    }
 
-        fn matmul(&self, o: &mut MutView<'_, CudaSlice<f32>>, a: &View<'_, CudaSlice<f32>>, b: &View<'_, CudaSlice<f32>>, width: usize, o_rows: usize, o_cols: usize) {
-            let f = self.gpu.get_func("module", "matmul").unwrap();
-            let cfg = LaunchConfig {
-                block_dim: (COL_TILE_WIDTH as u32, ROW_TILE_WIDTH as u32, 1),
-                grid_dim: ((o_cols/COL_TILE_WIDTH + 2) as u32, (o_rows/ROW_TILE_WIDTH + 2) as u32, 1),
-                shared_mem_bytes: 0,
-            };
-            unsafe { f.launch(cfg, (&a.cudaview(), &b.cudaview(), &o.cudaview(), width, o_rows, o_cols)) }.unwrap();
-        }
+    fn matmul(&self, o: &mut MutView<'_, CudaSlice<f32>>, a: &View<'_, CudaSlice<f32>>, b: &View<'_, CudaSlice<f32>>, width: usize, o_rows: usize, o_cols: usize) {
+        let blas_cfg: GemmConfig<f32> = GemmConfig {
+            transa: NO_TRANS,
+            transb: NO_TRANS,
+            m: o_cols as i32,
+            n: o_rows as i32,
+            k: width as i32,
+            alpha: 1.0,
+            lda: o_cols as i32,
+            ldb: width as i32,
+            beta: 0.0,
+            ldc: o_cols as i32,
+        };
+        unsafe { self.blas.gemm(blas_cfg, &b.cudaview(), &a.cudaview(),  &mut o.cudamutview()).unwrap(); };
+    }
 
-        fn softmax<'a>(&self, x: &mut MutView<'a, CudaSlice<f32>>, n: usize) {
-            let f = self.gpu.get_func("module", "softmax").unwrap();
-            unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&x.cudaview(), n)) }.unwrap();
-        }
-
+    fn softmax<'a>(&self, x: &mut MutView<'a, CudaSlice<f32>>, n: usize) {
+        let f = self.gpu.get_func("module", "softmax").unwrap();
+        unsafe { f.launch(LaunchConfig::for_num_elems(n as u32), (&x.cudaview(), n)) }.unwrap();
+    }
 
     fn to_cpu(&self, state: &RunStateView<CudaSlice<f32>>, cpu_state: &mut RunState<Vec<f32>>) {
         self.gpu.dtoh_sync_copy_into(state.x.as_ref(), &mut cpu_state.x.as_mut()).unwrap();
@@ -232,21 +237,16 @@ impl GPU {
     }
 
     #[allow(dead_code)]
-    pub fn matmul_cublas(&self, o: &mut MutView<'_, CudaSlice<f32>>, a: &View<'_, CudaSlice<f32>>, b: &View<'_, CudaSlice<f32>>, width: usize, o_rows: usize, o_cols: usize) {
-        let blas_cfg: GemmConfig<f32> = GemmConfig {
-            transa: NO_TRANS,
-            transb: NO_TRANS,
-            m: o_cols as i32,
-            n: o_rows as i32,
-            k: width as i32,
-            alpha: 1.0,
-            lda: o_cols as i32,
-            ldb: width as i32,
-            beta: 0.0,
-            ldc: o_cols as i32,
+    fn matmul_naive(&self, o: &mut MutView<'_, CudaSlice<f32>>, a: &View<'_, CudaSlice<f32>>, b: &View<'_, CudaSlice<f32>>, width: usize, o_rows: usize, o_cols: usize) {
+        let f = self.gpu.get_func("module", "matmul").unwrap();
+        let cfg = LaunchConfig {
+            block_dim: (COL_TILE_WIDTH as u32, ROW_TILE_WIDTH as u32, 1),
+            grid_dim: ((o_cols/COL_TILE_WIDTH + 2) as u32, (o_rows/ROW_TILE_WIDTH + 2) as u32, 1),
+            shared_mem_bytes: 0,
         };
-        unsafe { self.blas.gemm(blas_cfg, &b.cudaview(), &a.cudaview(),  &mut o.cudamutview()).unwrap(); };
+        unsafe { f.launch(cfg, (&a.cudaview(), &b.cudaview(), &o.cudaview(), width, o_rows, o_cols)) }.unwrap();
     }
+
 }
 
 #[cfg(test)]

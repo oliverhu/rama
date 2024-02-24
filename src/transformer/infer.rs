@@ -15,8 +15,6 @@ pub fn forward<'a, T: Storage, D: Device<T>>(cfg: &Config, wv: &TransformerWeigh
     let pos_real = wv.freq_cis_real.slice(pos * (head_size / 2)..);
     let pos_img = wv.freq_cis_imag.slice(pos * (head_size / 2)..);
 
-
-
     for layer in 0..cfg.n_layers {
         device.rmsnorm(&mut rsv.xb, &rsv.x.as_view(), &wv.rms_att_weight.slice(layer * dim..), dim);
         device.matmul(&mut rsv.q, &wv.wq.slice(layer * dim * dim..), &rsv.xb.as_view(), dim, dim, 1);
@@ -83,8 +81,5 @@ pub fn sample_top_q(probabilities: &[f32], num: usize, topp: f32, rng: &mut ChaC
             return prob_index[i].0;
         }
     }
-
-    return prob_index[last_index].0;
-
-
+    prob_index[last_index].0
 }
