@@ -65,7 +65,7 @@ stories15M.bin  | M2 Macbook Pro    | 194.81 tok/s
 stories110M.bin | Ryzen 7 5700X     | 68 tok/s
 stories110M.bin | RTX 4700ti        | 80 tok/s
 stories110M.bin | RTX 4700ti/CUBLAS | 113 tok/s
-stories110M.bin | M1 Macbook Pro    | 29 tok/s 
+stories110M.bin | M1 Macbook Pro    | 29 tok/s
 stories110M.bin | M2 Macbook Pro    | 52 tok/s
 llama2-7b.bin   | Ryzen 7 5700X     | 1.38 tok/s
 llama2-7b.bin   | M1 Macbook Pro    | 0.02 tok/s
@@ -80,7 +80,7 @@ Running llama2-7b f32 in M1 macbook is extremely slow since it requires 25GB mem
 - [x] Support GPU inference.
 - [x] Improve GPU performance to be at least slightly faster than CPU as baseline.
 - [x] Support CUBLAS for matmul.
-- [ ] Support SIMD for CPU.
+- [x] Support SIMD for CPU.
 - [ ] Support quantization.
 - [ ] Support flash attention.
 - [ ] Support AMD GPUs.
