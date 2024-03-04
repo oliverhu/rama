@@ -1,26 +1,7 @@
-[package]
-name = "rama"
-version = "0.2.0"
-edition = "2021"
-license = "MIT"
+[workspace]
 
-[build-dependencies]
-bindgen = "0.69"
-cc = "1.0.82"
-regex = "1.9.3"
+members = [
+    "engine", "server",
+]
+resolver = "2"
 
-[dependencies]
-clap = { version = "4.4", features = ["derive"] }
-rayon ={ version = "1.8" }
-rand ={ version = "*" }
-byteorder = { version = "1.5" }
-rand_chacha ={ version = "*" }
-wide = "0.7.13"
-
-[features]
-# default = ["gpu"]
-gpu = ["dep:cudarc"]
-
-[dependencies.cudarc]
-version = "*"
-optional = true
