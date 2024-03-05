@@ -63,6 +63,7 @@ fn main() {
     let args = Args::parse();
     let path = &args.model;
     let token_path = &args.tokenizer;
+    let topp = args.topp;
 
     let rd = &mut BufReader::new(File::open(path).unwrap());
     let config = Config::from_file(rd);
@@ -95,7 +96,7 @@ fn main() {
 
     let start: SystemTime = SystemTime::now();
 
-    let _ = transformer::generate(&config, &tokenizer, prompt, temperature, step.into(), &wv, &mut rsv, &device);
+    let _ = transformer::generate(&config, &tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &device);
     let elapsed = start.elapsed().unwrap();
     println!("\n--------------------------------");
     println!("elapsed: {}.{:03} s, avg tok/s: {}",

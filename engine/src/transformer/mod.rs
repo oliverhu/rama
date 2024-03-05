@@ -168,16 +168,18 @@ pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
     prompt: String,
     temperature: f32,
     steps: usize,
+    topp: f32,
     wv: &TransformerWeightsView<'a, T>,
     rsv: &mut RunStateView<'a, T>,
     device: &D
-) -> Result<()>
+) -> Result<String>
     {
     let prompt_tokens = if prompt.len() > 0 { tokenizer.encode(&prompt) } else { Vec::new() };
 
     let mut token = 1;
     let mut pos = 0;
     let mut next;
+    let mut response = "".to_owned();
 
     while pos < steps {
         forward(cfg, wv, rsv, token, pos, device);
@@ -185,18 +187,17 @@ pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
         } else {
-            next = device.sample(cfg, rsv, temperature);
+            next = device.sample(cfg, rsv, temperature, topp);
         }
 
         let mut token_str = tokenizer.vocab[next].clone();
         token_str = decode(token_str);
+        response += &token_str;
         print!("{}", token_str);
         stdout().flush()?;
 
         token = next;
         pos += 1;
     };
-    Ok(())
-
-
+    Ok(response)
 }

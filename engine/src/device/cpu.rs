@@ -156,7 +156,7 @@ impl Device<Vec<f32>> for CPU {
         );
     }
 
-    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, Vec<f32>>, temperature: f32) -> usize {
+    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, Vec<f32>>, temperature: f32, topp: f32) -> usize {
         let next;
 
         let lr = rsv.logits.range.clone();
@@ -177,8 +177,7 @@ impl Device<Vec<f32>> for CPU {
             // compute probabilities
             self.softmax_num(logits, 0);
             // next = sample(&transformer.rsv.logits, &mut rng);
-            next = sample_top_q(logits, cfg.vocab_size, 0.9, &mut rng);
-
+            next = sample_top_q(logits, cfg.vocab_size, topp, &mut rng);
         }
         next
     }
