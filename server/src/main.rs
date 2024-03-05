@@ -3,41 +3,29 @@ use axum::{
     http::StatusCode,
     Json, Router,
 };
+use engine::EngineConfig;
 use serde::{Deserialize, Serialize};
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
     let app = Router::new()
-        .route("/", get(root))
-        .route("/user", post(create_user));
+        .route("/", get(home))
+        .route("/generate", post(generate))
+        .route("/chat", post(chat));
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
-
 }
 
-async fn root() -> &'static str {
-    "Hello world"
+async fn home() -> &'static str {
+    "Hello world! Welcome to Rama!"
 }
 
-async fn create_user(Json(payload): Json<CreateUser>) -> (StatusCode, Json<User>) {
-    let user = User {
-        id: 1234,
-        username: payload.username,
-    };
-    (StatusCode::CREATED, Json(user))
-
+async fn generate(body: String) -> (StatusCode, String) {
+    let config = EngineConfig::default();
+    (StatusCode::CREATED, body)
 }
 
-// the input to our `create_user` handler
-#[derive(Deserialize)]
-struct CreateUser {
-    username: String,
-}
-
-// the output to our `create_user` handler
-#[derive(Serialize)]
-struct User {
-    id: u64,
-    username: String,
+async fn chat(body: String) -> (StatusCode, String) {
+    (StatusCode::CREATED, body)
 }

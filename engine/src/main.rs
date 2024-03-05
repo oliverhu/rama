@@ -95,8 +95,7 @@ fn main() {
 
     let start: SystemTime = SystemTime::now();
 
-
-    let _ = generate(&config, &tokenizer, prompt, temperature, step.into(), &wv, &mut rsv, &device);
+    let _ = transformer::generate(&config, &tokenizer, prompt, temperature, step.into(), &wv, &mut rsv, &device);
     let elapsed = start.elapsed().unwrap();
     println!("\n--------------------------------");
     println!("elapsed: {}.{:03} s, avg tok/s: {}",
@@ -105,40 +104,3 @@ fn main() {
 
 }
 
-fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
-    tokenizer: &Tokenizer,
-    prompt: String,
-    temperature: f32,
-    steps: usize,
-    wv: &TransformerWeightsView<'a, T>,
-    rsv: &mut RunStateView<'a, T>,
-    device: &D
-) -> Result<()>
-    {
-    let prompt_tokens = if prompt.len() > 0 { tokenizer.encode(&prompt) } else { Vec::new() };
-
-    let mut token = 1;
-    let mut pos = 0;
-    let mut next;
-
-    while pos < steps {
-        forward(cfg, wv, rsv, token, pos, device);
-
-        if pos < prompt_tokens.len() {
-            next = prompt_tokens[pos];
-        } else {
-            next = device.sample(cfg, rsv, temperature);
-        }
-
-        let mut token_str = tokenizer.vocab[next].clone();
-        token_str = decode(token_str);
-        print!("{}", token_str);
-        stdout().flush()?;
-
-        token = next;
-        pos += 1;
-    };
-    Ok(())
-
-
-}

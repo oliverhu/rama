@@ -1,10 +1,4 @@
-# Rama
-
-<p align="center">
-  <img src="assets/rama.png" width="300" height="300" alt="Cute Llama">
-</p>
-
-Rama is composed of a Llama inference engine (the forward pass) and a inference service (web service layer). More specifically, the Rama engine is a Llama inference engine in Rust. It started as a port of [llama.c](https://github.com/karpathy/llama2.c) to grok llama architecture and Rust. So far the differential feature of Rama is its support for GPU inference. The service layer is under heavy construction.
+Rama engine is a Llama inference engine in Rust. It started as a port of [llama.c](https://github.com/karpathy/llama2.c) to grok llama architecture and Rust. So far the differential feature of Rama is its support for GPU inference.
 
 ## Usage
 ```
