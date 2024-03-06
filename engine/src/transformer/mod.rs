@@ -241,7 +241,7 @@ pub async fn generate_stream<'a, T: Storage, D: Device<T>>(cfg: &Config,
 
         token = next;
         pos += 1;
-        let _ = sender.send(Ok(Event::default().data(token_str.replace("\n", "@")))).await;
+        let _ = sender.send(Ok(Event::default().data(token_str.replace("\n", "\\n")))).await;
         tokio::time::sleep(Duration::from_millis(1)).await;
 
     };

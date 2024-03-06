@@ -19,7 +19,7 @@ $ pip install httpie # if you already have httpie installed, skip this line.
 The default tokenizer.bin is under `./engine/tokenizer.bin`
 ```
 $ cargo run --bin server -- --model PATH_TO_stories15M.bin --tokenizer PATH_TO_tokenizer.bin
-$ http --stream :3000/gen prompt=='I have a dog' | stdbuf -o0 sed -nE "s/^data: (.*).*$/\1/p" | stdbuf -o0 tr -d '\n' | stdbuf -o0 tr -s '@' '\n'
+$ http --stream :3000/gen prompt=='I have a dog' | python server/print.py
 ```
 Output:
 ```
@@ -29,7 +29,6 @@ One day, Lily and Spot go to the park. They see a big slide. Lily wants to go on
 Lily climbs up the ladder. She sits on the slide. She holds Spot's leash. She says to Spot, "Ready, Spot? Let's go!" Spot barks. He jumps off the slide. He runs to the slide. He sees Lily. He runs to the slide. He jumps on the slide. He slides down. He goes very fast. He laughs.
 Lily claps. She says, "Good job, Spot! You are brave!" She hugs Spot. She says, "You are a good dog, Spot. You are a good dog." Spot barks.%
 ```
-The shell command is clearly not the most effective one, happy to take PRs to make that nicer..
 
 ### Engine Usage
 Of course you can skip the inference server and only develop/use the engine!
