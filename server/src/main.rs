@@ -24,9 +24,13 @@ struct Args {
     #[arg(short, long)]
     tokenizer: String,
 
-    /// Number of steps to run
+    /// (optional) Number of steps to run
     #[arg(short, long, default_value_t = 255)]
     step: u16,
+
+    /// (optional) The temperature [0, inf], default is 1.
+    #[arg(short('a'), long, default_value = "0.0.0.0:3000")]
+    address: String,
 
     /// (optional) The temperature [0, inf], default is 1.
     #[arg(short('r'), long, default_value_t = 1.0)]
@@ -52,6 +56,7 @@ async fn main() {
     let step = args.step;
     let temperature = args.temperature;
     let mode = args.mode;
+    let address = args.address;
 
     let cfg = EngineConfig {
         model: model.to_string(),
@@ -67,7 +72,7 @@ async fn main() {
         .route("/gen", get(gen))
         .route("/chat", post(chat))
         .with_state(cfg);
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind(address).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -85,10 +90,6 @@ async fn gen(
     let (sender, receiver) = tokio::sync::mpsc::channel(1000);
 
     tokio::spawn(async move {
-        // let mut config = EngineConfig::from_model_tokenizer(
-        //     "/home/pi/py/llama2.c/stories15M.bin".to_owned(),
-        //     "/home/pi/rama/engine/tokenizer.bin".to_owned()
-        // );
         generate_stream(config, prompt, sender).await;
     });
 
@@ -96,7 +97,6 @@ async fn gen(
     let str = reusable_receiver.stream();
     Sse::new(str).keep_alive(
         axum::response::sse::KeepAlive::new()
-            // .interval(Duration::from_secs(1))
             .text("keep-alive-text"),
     )
 }
