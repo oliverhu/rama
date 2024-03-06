@@ -5,17 +5,16 @@ use tokenizer::bpe::Tokenizer;
 #[cfg(feature="gpu")]
 use device::gpu::GPU;
 use transformer::state::{RunState, RunStateView, TransformerWeights, TransformerWeightsView};
-use transformer::{Config};
+use transformer::Config;
 
 use core::f32;
 use std::fs::File;
 use std::time::SystemTime;
-use std::io::{BufReader};
+use std::io::BufReader;
 mod device;
 mod transformer;
 mod utils;
 pub mod tokenizer;
-
 
 
 #[derive(Parser, Debug)]
