@@ -6,3 +6,4 @@ llama2.c
 llama*bin
 __pycache__/
 *.bin
+!tokenizer.bin

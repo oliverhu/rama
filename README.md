@@ -4,12 +4,36 @@
   <img src="assets/rama.png" width="300" height="300" alt="Cute Llama">
 </p>
 
-Rama is composed of a Llama inference engine (the forward pass) and a inference service (web service layer). More specifically, the Rama engine is a Llama inference engine in Rust. It started as a port of [llama.c](https://github.com/karpathy/llama2.c) to grok llama architecture and Rust. So far the differential feature of Rama is its support for GPU inference. The service layer is under heavy construction.
+Rama is composed of a Llama inference engine (the forward pass, like TensorRT) and an inference server (the web service layer, like Triton). It started as a port of [llama.c](https://github.com/karpathy/llama2.c) to understand the llama architecture and learn Rust. Later I realized the web service layer is necessary for the repo to be useful for home hosting & further my learning in Rust (async). So far the differential feature of Rama is its support for GPU inference, plus a well integrated web server. The inference server crate (./server) is under heavy construction.
 
 ## Usage
+### Pre-req
+Check out code, install dependenceis & get the models!
 ```
-git clone https://github.com/oliverhu/rama
-wget https://huggingface.co/karpathy/tinyllamas/resolve/main/stories15M.bin
+$ git clone https://github.com/oliverhu/rama
+$ wget https://huggingface.co/karpathy/tinyllamas/resolve/main/stories15M.bin
+$ pip install httpie # if you already have httpie installed, skip this line.
+```
+### Web Server + Engine Usage
+
+The default tokenizer.bin is under `./engine/tokenizer.bin`
+```
+$ cargo run --bin server -- --model PATH_TO_stories15M.bin --tokenizer PATH_TO_tokenizer.bin
+$ http --stream :3000/gen prompt=='I have a dog' | stdbuf -o0 sed -nE "s/^data: (.*).*$/\1/p" | stdbuf -o0 tr -d '\n' | stdbuf -o0 tr -s '@' '\n'
+```
+Output:
+```
+$ http --stream :3000/gen prompt=='I have a dog' | stdbuf -o0 sed -nE "s/^data: (.*).*$/\1/p" | stdbuf -o0 tr -d '\n' | stdbuf -o0 tr -s '@' '\n'
+I have a dog named Spot. Spot is a good dog. He loves to play with Lily. Lily has a dog named Spot. Spot is a good dog. He is obedient.
+One day, Lily and Spot go to the park. They see a big slide. Lily wants to go on the slide. She says to Spot, "Come on, Spot. Let's go on the slide." Spot barks and wags his tail. He likes Lily.
+Lily climbs up the ladder. She sits on the slide. She holds Spot's leash. She says to Spot, "Ready, Spot? Let's go!" Spot barks. He jumps off the slide. He runs to the slide. He sees Lily. He runs to the slide. He jumps on the slide. He slides down. He goes very fast. He laughs.
+Lily claps. She says, "Good job, Spot! You are brave!" She hugs Spot. She says, "You are a good dog, Spot. You are a good dog." Spot barks.%
+```
+The shell command is clearly not the most effective one, happy to take PRs to make that nicer..
+
+### Engine Usage
+Of course you can skip the inference server and only develop/use the engine!
+```
 cargo build --bin engine --release
 cargo run --bin engine --release -- -m stories15M.bin -t tokenizer.bin -p 'once upon a time'
 ```
@@ -18,20 +42,20 @@ release build gives 370 tok/s)
 
 For llama2 model from Meta:
 ```
-pip install -r export/requirements.txt
-python export/export.py llama2_7b.bin --meta-llama path/to/llama/model/7B
-cargo run --release -- -m llama2_7b.bin -t tokenizer.bin -p 'once upon a time'
+$ pip install -r engine/export/requirements.txt
+$ python engine/export/export.py llama2_7b.bin --meta-llama path/to/llama/model/7B
+$ cargo run --release -- -m llama2_7b.bin -t tokenizer.bin -p 'once upon a time'
 ```
 
 pass `--features gpu` to use GPU for matrix multiplications
 ```
-cargo run --bin engine --features gpu --release -- -m llama2_7b.bin -t tokenizer.bin -p 'once upon a time'
+$ cargo run --bin engine --features gpu --release -- -m llama2_7b.bin -t tokenizer.bin -p 'once upon a time'
 ```
 
 
 Sample output:
 ```
-❯ cargo run --bin engine --release -- -m llama2-7b.bin -t tokenizer.bin -p 'once upon a time' -r 0.5
+$ cargo run --bin engine --release -- -m llama2-7b.bin -t tokenizer.bin -p 'once upon a time' -r 0.5
 
     Finished release [optimized] target(s) in 0.01s
     Running `target/release/rama -m llama2-7b.bin -t tokenizer.bin -p 'once upon a time' -r 0.5`
@@ -52,7 +76,7 @@ This repo was created to learn Rust and understand llama2 model architectures by
 
 Plan is to catch up with the performance of llama.cpp!
 
-## Performance
+## Engine Performance
 Command used to get tok/s
 ```
 cargo run --bin engine --release --features gpu -- -m stories110M.bin  -t tokenizer.bin -p "once upon a time" -r 1 -s 200
@@ -73,6 +97,9 @@ llama2-7b.bin   | M2 Macbook Pro    | 0.12 tok/s
 
 
 Running llama2-7b f32 in M1 macbook is extremely slow since it requires 25GB memory but M1 only has 16GB total memory, the amount of swapping is huge.
+
+## Server Performance
+TBD. It currently uses Server Sent Event to drive generations, for a chatting experience, need to support WebSocket later.
 
 ## TODOs
 - [x] Support chat interface.
