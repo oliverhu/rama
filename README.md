@@ -23,7 +23,7 @@ $ http --stream :3000/gen prompt=='I have a dog' | python server/print.py
 ```
 Output:
 ```
-$ http --stream :3000/gen prompt=='I have a dog' | stdbuf -o0 sed -nE "s/^data: (.*).*$/\1/p" | stdbuf -o0 tr -d '\n' | stdbuf -o0 tr -s '@' '\n'
+$ http --stream :3000/gen prompt=='I have a dog' | python server/print.py
 I have a dog named Spot. Spot is a good dog. He loves to play with Lily. Lily has a dog named Spot. Spot is a good dog. He is obedient.
 One day, Lily and Spot go to the park. They see a big slide. Lily wants to go on the slide. She says to Spot, "Come on, Spot. Let's go on the slide." Spot barks and wags his tail. He likes Lily.
 Lily climbs up the ladder. She sits on the slide. She holds Spot's leash. She says to Spot, "Ready, Spot? Let's go!" Spot barks. He jumps off the slide. He runs to the slide. He sees Lily. He runs to the slide. He jumps on the slide. He slides down. He goes very fast. He laughs.
