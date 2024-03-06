@@ -1,10 +1,8 @@
 use std::{convert::Infallible, fs::File, io::{self, BufReader}, time::SystemTime};
 
 use axum::response::sse::Event;
-use clap::builder::Str;
 
 use crate::{device::cpu::CPU, tokenizer::bpe::Tokenizer, transformer::{state::{RunState, RunStateView, TransformerWeights, TransformerWeightsView}, Config}};
-use std::io::{prelude::*, stdout};
 pub mod transformer;
 pub mod device;
 pub mod tokenizer;

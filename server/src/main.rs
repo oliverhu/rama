@@ -1,18 +1,13 @@
 use axum::{
-    extract::Query, http::StatusCode, routing::{get, post}, Json, Router
+    extract::Query, http::StatusCode, routing::{get, post}, Router
 };
 use engine::{generate, generate_stream, EngineConfig};
-use serde::{Deserialize, Serialize};
 
-use axum::{
-    response::sse::{Event, Sse},
-};
+use axum::response::sse::{Event, Sse};
 use axum_extra::{headers, TypedHeader};
-use futures::stream::{self, Stream};
-use std::{collections::HashMap, convert::Infallible, path::PathBuf, pin::Pin, task::{Context, Poll}, time::Duration};
-use tokio_stream::StreamExt as _;
-use tower_http::{services::ServeDir, trace::TraceLayer};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use futures::stream::Stream;
+use std::{collections::HashMap, convert::Infallible, pin::Pin, task::{Context, Poll}};
+
 use tokio::sync::oneshot::error::TryRecvError;
 use tokio::sync::mpsc::Receiver;
 
