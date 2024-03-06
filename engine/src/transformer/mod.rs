@@ -4,9 +4,12 @@ pub mod ram;
 pub mod state;
 pub mod infer;
 
-use std::{fs::File, io::BufReader, ops::{Range, RangeBounds, Bound}};
+use std::{convert::Infallible, fs::File, io::{self, BufReader}, ops::{Bound, Range, RangeBounds}, time::Duration};
+use axum::response::sse::Event;
+use tokio::sync::mpsc::Sender;
+
 use crate::{device::device::Device, tokenizer::bpe::{decode, Tokenizer}, transformer::infer::forward, utils::read::*};
-use std::io::{prelude::*, Result, stdout};
+use std::io::{prelude::*, stdout};
 
 use self::state::{RunStateView, TransformerWeightsView};
 
@@ -172,7 +175,7 @@ pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
     wv: &TransformerWeightsView<'a, T>,
     rsv: &mut RunStateView<'a, T>,
     device: &D
-) -> Result<String>
+) -> io::Result<String>
     {
     let prompt_tokens = if prompt.len() > 0 { tokenizer.encode(&prompt) } else { Vec::new() };
 
@@ -200,4 +203,46 @@ pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
         pos += 1;
     };
     Ok(response)
+}
+
+pub async fn generate_stream<'a, T: Storage, D: Device<T>>(cfg: &Config,
+    tokenizer: &Tokenizer,
+    prompt: String,
+    temperature: f32,
+    steps: usize,
+    topp: f32,
+    wv: &TransformerWeightsView<'a, T>,
+    rsv: &mut RunStateView<'a, T>,
+    device: &D,
+    sender: Sender<Result<Event, Infallible>>
+) {
+    let prompt_tokens = if prompt.len() > 0 { tokenizer.encode(&prompt) } else { Vec::new() };
+
+    let mut token = 1;
+    let mut pos = 0;
+    let mut next;
+    let mut response = "".to_owned();
+
+    while pos < steps {
+        forward(cfg, wv, rsv, token, pos, device);
+
+        if pos < prompt_tokens.len() {
+            next = prompt_tokens[pos];
+        } else {
+            next = device.sample(cfg, rsv, temperature, topp);
+        }
+
+        let mut token_str = tokenizer.vocab[next].clone();
+        token_str = decode(token_str);
+        response += &token_str;
+        print!("{}", token_str);
+        let _ = stdout().flush();
+
+
+        token = next;
+        pos += 1;
+        let _ = sender.send(Ok(Event::default().data(token_str))).await;
+        tokio::time::sleep(Duration::from_millis(1)).await;
+
+    };
 }
