@@ -165,7 +165,7 @@ impl Device<CudaSlice<f32>> for GPU {
             let cpu = CPU {};
             cpu.softmax_num(&mut logits, 0);
             // next = sample(&transformer.state.logits, &mut rng); // Greedy sampling doesn't work at all..
-            next = sample_top_q(&logits, cfg.vocab_size, temperature, &mut rng);
+            next = sample_top_q(&logits, cfg.vocab_size, topp, &mut rng);
 
         }
         next
@@ -217,7 +217,7 @@ impl GPU {
     pub fn new() -> Self {
         let dev = CudaDevice::new(0).unwrap();
 
-        let cu_file = std::fs::read_to_string("./src/device/math.cu").unwrap();
+        let cu_file = std::fs::read_to_string("./engine/src/device/math.cu").unwrap();
         let ptx = compile_ptx(cu_file).unwrap();
         dev.load_ptx(ptx, "module", &
             ["matmul",

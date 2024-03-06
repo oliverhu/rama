@@ -1,22 +1,22 @@
 use clap::Parser;
 use device::cpu::CPU;
-use device::device::Device;
+
 use tokenizer::bpe::Tokenizer;
 #[cfg(feature="gpu")]
 use device::gpu::GPU;
 use transformer::state::{RunState, RunStateView, TransformerWeights, TransformerWeightsView};
-use transformer::{Config, Storage};
+use transformer::{Config};
 
 use core::f32;
 use std::fs::File;
 use std::time::SystemTime;
-use std::io::{prelude::*, BufReader, Result, stdout};
+use std::io::{BufReader};
 mod device;
 mod transformer;
 mod utils;
 pub mod tokenizer;
-use crate::tokenizer::bpe::decode;
-use crate::transformer::infer::forward;
+
+
 
 #[derive(Parser, Debug)]
 #[command(long_about = None)]

@@ -205,6 +205,7 @@ pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
     Ok(response)
 }
 
+#[allow(dead_code)]
 pub async fn generate_stream<'a, T: Storage, D: Device<T>>(cfg: &Config,
     tokenizer: &Tokenizer,
     prompt: String,

@@ -1,7 +1,8 @@
 use std::{convert::Infallible, fs::File, io::{self, BufReader}, time::SystemTime};
 
 use axum::response::sse::Event;
-
+#[cfg(feature="gpu")]
+use crate::device::gpu::GPU;
 use crate::{device::cpu::CPU, tokenizer::bpe::Tokenizer, transformer::{state::{RunState, RunStateView, TransformerWeights, TransformerWeightsView}, Config}};
 pub mod transformer;
 pub mod device;
