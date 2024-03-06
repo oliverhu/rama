@@ -1,22 +1,21 @@
 use clap::Parser;
 use device::cpu::CPU;
-use device::device::Device;
+
 use tokenizer::bpe::Tokenizer;
 #[cfg(feature="gpu")]
 use device::gpu::GPU;
 use transformer::state::{RunState, RunStateView, TransformerWeights, TransformerWeightsView};
-use transformer::{Config, Storage};
+use transformer::Config;
 
 use core::f32;
 use std::fs::File;
 use std::time::SystemTime;
-use std::io::{prelude::*, BufReader, Result, stdout};
+use std::io::BufReader;
 mod device;
 mod transformer;
 mod utils;
 pub mod tokenizer;
-use crate::tokenizer::bpe::decode;
-use crate::transformer::infer::forward;
+
 
 #[derive(Parser, Debug)]
 #[command(long_about = None)]
@@ -63,6 +62,7 @@ fn main() {
     let args = Args::parse();
     let path = &args.model;
     let token_path = &args.tokenizer;
+    let topp = args.topp;
 
     let rd = &mut BufReader::new(File::open(path).unwrap());
     let config = Config::from_file(rd);
@@ -95,8 +95,7 @@ fn main() {
 
     let start: SystemTime = SystemTime::now();
 
-
-    let _ = generate(&config, &tokenizer, prompt, temperature, step.into(), &wv, &mut rsv, &device);
+    let _ = transformer::generate(&config, &tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &device);
     let elapsed = start.elapsed().unwrap();
     println!("\n--------------------------------");
     println!("elapsed: {}.{:03} s, avg tok/s: {}",
@@ -105,40 +104,3 @@ fn main() {
 
 }
 
-fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
-    tokenizer: &Tokenizer,
-    prompt: String,
-    temperature: f32,
-    steps: usize,
-    wv: &TransformerWeightsView<'a, T>,
-    rsv: &mut RunStateView<'a, T>,
-    device: &D
-) -> Result<()>
-    {
-    let prompt_tokens = if prompt.len() > 0 { tokenizer.encode(&prompt) } else { Vec::new() };
-
-    let mut token = 1;
-    let mut pos = 0;
-    let mut next;
-
-    while pos < steps {
-        forward(cfg, wv, rsv, token, pos, device);
-
-        if pos < prompt_tokens.len() {
-            next = prompt_tokens[pos];
-        } else {
-            next = device.sample(cfg, rsv, temperature);
-        }
-
-        let mut token_str = tokenizer.vocab[next].clone();
-        token_str = decode(token_str);
-        print!("{}", token_str);
-        stdout().flush()?;
-
-        token = next;
-        pos += 1;
-    };
-    Ok(())
-
-
-}
