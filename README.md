@@ -80,19 +80,24 @@ Command used to get tok/s
 ```
 cargo run --bin engine --release --features gpu -- -m stories110M.bin  -t tokenizer.bin -p "once upon a time" -r 1 -s 200
 ```
-Model           | Platform       | Token/s
+Model           | Platform          | Token/s
 :---------------|:------------------|:------------
-stories15M.bin  | Ryzen 7 5700X     | 402.35 tok/s
-stories15M.bin  | M1 Macbook Pro    | 196.47 tok/s
-stories15M.bin  | M2 Macbook Pro    | 194.81 tok/s
-stories110M.bin | Ryzen 7 5700X     | 68 tok/s
-stories110M.bin | RTX 4700ti        | 80 tok/s
-stories110M.bin | RTX 4700ti/CUBLAS | 113 tok/s
-stories110M.bin | M1 Macbook Pro    | 29 tok/s
-stories110M.bin | M2 Macbook Pro    | 52 tok/s
-llama2-7b.bin   | Ryzen 7 5700X     | 1.38 tok/s
-llama2-7b.bin   | M1 Macbook Pro    | 0.02 tok/s
-llama2-7b.bin   | M2 Macbook Pro    | 0.12 tok/s
+stories15M.bin  | RTX 4090          | 480.81 
+stories15M.bin  | Ryzen 7 5700X     | 402.35 
+stories15M.bin  | Intel i9 13900KF  | 346.75
+stories15M.bin  | M1 Macbook Pro    | 196.47 
+stories15M.bin  | M2 Macbook Pro    | 194.81 
+stories110M.bin | RTX 4090          | 201.08 
+stories110M.bin | RTX 4070ti/CUBLAS | 113 
+stories110M.bin | Intel i9 13900KF  | 86
+stories110M.bin | RTX 4070ti        | 80 
+stories110M.bin | Ryzen 7 5700X     | 68 
+stories110M.bin | M2 Macbook Pro    | 52 
+stories110M.bin | M1 Macbook Pro    | 29 
+llama2-7b.bin   | Intel i9 13900KF  | 2.42
+llama2-7b.bin   | Ryzen 7 5700X     | 1.38 
+llama2-7b.bin   | M2 Macbook Pro    | 0.12 
+llama2-7b.bin   | M1 Macbook Pro    | 0.02 
 
 
 Running llama2-7b f32 in M1 macbook is extremely slow since it requires 25GB memory but M1 only has 16GB total memory, the amount of swapping is huge.
