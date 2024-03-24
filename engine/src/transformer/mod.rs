@@ -5,8 +5,8 @@ pub mod state;
 pub mod infer;
 
 use std::{convert::Infallible, fs::File, io::{self, BufReader}, ops::{Bound, Range, RangeBounds}, time::Duration};
+use async_channel::Sender;
 use axum::response::sse::Event;
-use tokio::sync::mpsc::Sender;
 
 use crate::{device::device::Device, tokenizer::bpe::{decode, Tokenizer}, transformer::infer::forward, utils::read::*};
 use std::io::{prelude::*, stdout};
@@ -125,7 +125,7 @@ impl Storage for Vec<f32> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Config {
     pub dim: usize,
     pub hidden_dim: usize,

@@ -1,8 +1,9 @@
+use async_channel::Sender;
 use axum::{
     extract::{Query, State}, http::StatusCode, routing::{get, post}, Router
 };
 use clap::Parser;
-use engine::{generate_stream, EngineConfig};
+use engine::{ClientRequest, EngineConfig, EngineService, ENGINE_SERVICE};
 
 use axum::response::sse::{Event, Sse};
 use axum_extra::{headers, TypedHeader};
@@ -41,6 +42,9 @@ struct Args {
     mode: String,
 }
 
+pub struct AppState {
+
+}
 
 #[tokio::main]
 async fn main() {
@@ -63,11 +67,17 @@ async fn main() {
         mode,
     };
 
+    let (cr_sender, cr_receiver) = async_channel::bounded::<ClientRequest>(30);
+    // Initialize engine service.
+    let engine = EngineService::new(cfg.clone(), cr_receiver);
+    engine.init();
+    ENGINE_SERVICE.set(engine).unwrap();
+
     let app = Router::new()
         .route("/", get(home))
         .route("/gen", get(gen))
         .route("/chat", post(chat))
-        .with_state(cfg);
+        .with_state(cr_sender);
     let listener = tokio::net::TcpListener::bind(address).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
@@ -79,21 +89,25 @@ async fn home() -> &'static str {
 async fn gen(
     TypedHeader(user_agent): TypedHeader<headers::UserAgent>,
     Query(params): Query<HashMap<String, String>>,
-    State(config): State<EngineConfig>
+    State(cr_sender): State<Sender<ClientRequest>>
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     println!("`{}` connected", user_agent.as_str());
     let prompt = params.get("prompt").cloned().unwrap_or("".to_owned());
-    let (sender, mut receiver) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(16);
+    let (sender, receiver) = async_channel::bounded::<Result<Event, Infallible>>(16);
     let stream = async_stream::stream! {
-        while let Some(event) = receiver.recv().await {
+        while let Ok(event) = receiver.recv().await {
             yield event
         }
     };
 
-    tokio::spawn(async move {
-        generate_stream(config, prompt, sender).await;
-    });
-
+    let cr = ClientRequest {
+        prompt,
+        sender,
+    };
+    let _ = cr_sender.send(cr).await;
+    // tokio::spawn(async move {
+    //     generate_stream(config, prompt, sender).await;
+    // });
 
     Sse::new(stream).keep_alive(
         axum::response::sse::KeepAlive::new()
