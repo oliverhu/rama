@@ -41,6 +41,7 @@ const NO_TRANS: cublasOperation_t = cublasOperation_t::CUBLAS_OP_N;
 const ROW_TILE_WIDTH: usize = 32;
 const COL_TILE_WIDTH: usize = 32;
 
+#[derive(Debug)]
 pub struct GPU {
     // Reference to the GPU device.
     pub gpu: Arc<CudaDevice>,
