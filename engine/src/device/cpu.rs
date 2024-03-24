@@ -7,6 +7,8 @@ use crate::transformer::{infer::sample_top_q, state::{RunState, RunStateView}, C
 use wide::f32x4;
 
 use super::device::Device;
+
+#[derive(Debug)]
 pub struct CPU {}
 
 impl Device<Vec<f32>> for CPU {

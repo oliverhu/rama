@@ -1,5 +1,6 @@
 use std::{convert::Infallible, fs::File, io::BufReader, sync::OnceLock};
 use axum::response::sse::Event;
+#[cfg(feature="gpu")]
 use cudarc::driver::CudaSlice;
 #[cfg(feature="gpu")]
 use crate::device::gpu::GPU;
@@ -102,6 +103,7 @@ impl EngineService {
 
         #[allow(unused_mut)]
         let mut weights = TransformerWeights::from_file(rd, &model_config);
+        #[cfg(feature="gpu")]
         let weights = TransformerWeights::from_weight(&mut weights, &device);
 
         let tokenizer = Tokenizer::new(&token_path, model_config.vocab_size).unwrap();
