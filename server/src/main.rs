@@ -91,7 +91,7 @@ async fn gen(
     Query(params): Query<HashMap<String, String>>,
     State(cr_sender): State<Sender<ClientRequest>>
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    println!("`{}` connected", user_agent.as_str());
+    println!("\n`{}` connected", user_agent.as_str());
     let prompt = params.get("prompt").cloned().unwrap_or("".to_owned());
     let (sender, receiver) = async_channel::bounded::<Result<Event, Infallible>>(16);
     let stream = async_stream::stream! {

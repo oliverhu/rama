@@ -116,34 +116,35 @@ async fn handler() {
         match es.receiver.recv().await {
             Ok(cr) => {
                 // allocate RunState space.
-                let mut state = RunState::from_config(&es.model_config);
-                let prompt = cr.prompt;
-                println!("received prompt --> {}", prompt);
+                tokio::spawn(async {
+                    let mut state = RunState::from_config(&es.model_config);
+                    let prompt = cr.prompt;
+                    println!("received prompt --> {}", prompt);
 
-                #[cfg(not(feature="gpu"))]
-                let wv = TransformerWeightsView::from_ws(&es.weights);
+                    #[cfg(not(feature="gpu"))]
+                    let wv = TransformerWeightsView::from_ws(&es.weights);
 
-                #[cfg(feature="gpu")]
-                let device = GPU::new();
+                    #[cfg(feature="gpu")]
+                    let device = GPU::new();
 
-                #[cfg(feature="gpu")]
-                let weights = TransformerWeights::from_weight(&mut weights, &device);
+                    #[cfg(feature="gpu")]
+                    let weights = TransformerWeights::from_weight(&mut weights, &device);
 
 
-                #[cfg(feature="gpu")]
-                let mut state = RunState::from_state(&mut state, &device);
+                    #[cfg(feature="gpu")]
+                    let mut state = RunState::from_state(&mut state, &device);
 
-                #[cfg(feature="gpu")]
-                let wv = TransformerWeightsView::from_gpu_ws(&weights);
+                    #[cfg(feature="gpu")]
+                    let wv = TransformerWeightsView::from_gpu_ws(&weights);
 
-                let mut rsv = RunStateView::from_rs(&mut state);
+                    let mut rsv = RunStateView::from_rs(&mut state);
 
-                let step = es.eng_config.step;
-                let temperature = es.eng_config.temperature;
-                let topp = es.eng_config.topp;
-                let device = CPU {};
-                transformer::generate_stream(&es.model_config, &es.tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &device, cr.sender).await;
-
+                    let step = es.eng_config.step;
+                    let temperature = es.eng_config.temperature;
+                    let topp = es.eng_config.topp;
+                    let device = CPU {};
+                    transformer::generate_stream(&es.model_config, &es.tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &device, cr.sender).await;
+                });
             },
             Err(_) => {
                 println!("error");
