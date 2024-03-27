@@ -1,6 +1,6 @@
 use async_channel::Sender;
 use axum::{
-    extract::{Query, State}, http::StatusCode, routing::{get, post}, Router
+    extract::{Path, Query, State}, http::StatusCode, response::Html, routing::{get, post}, Router
 };
 use clap::Parser;
 use engine::{ClientRequest, EngineConfig, EngineService, ENGINE_SERVICE};
@@ -9,6 +9,8 @@ use axum::response::sse::{Event, Sse};
 use axum_extra::{headers, TypedHeader};
 use futures::stream::Stream;
 use std::{collections::HashMap, convert::Infallible};
+use minijinja::render;
+
 
 #[derive(Parser, Debug)]
 #[command(long_about = None)]
@@ -40,10 +42,6 @@ struct Args {
     /// (optional) Mode: generate or chat.
     #[arg(short('o'), long, default_value = "generate")]
     mode: String,
-}
-
-pub struct AppState {
-
 }
 
 #[tokio::main]
@@ -82,8 +80,10 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn home() -> &'static str {
-    "Hello world! Welcome to Rama!"
+async fn home(Query(params): Query<HashMap<String, String>>) -> Html<String> {
+    let prompt = params.get("prompt").cloned().unwrap_or("".to_owned());
+    let r = render!(HTML_TEMPLATE, prompt => prompt );
+    Html(r)
 }
 
 async fn gen(
@@ -105,9 +105,6 @@ async fn gen(
         sender,
     };
     let _ = cr_sender.send(cr).await;
-    // tokio::spawn(async move {
-    //     generate_stream(config, prompt, sender).await;
-    // });
 
     Sse::new(stream).keep_alive(
         axum::response::sse::KeepAlive::new()
@@ -118,3 +115,29 @@ async fn gen(
 async fn chat(body: String) -> (StatusCode, String) {
     (StatusCode::CREATED, body)
 }
+
+const HTML_TEMPLATE: &'static str = r#"
+<!doctype html>
+
+<html lang="en">
+
+<body>
+    <p id="prompt">Prompt: "{{ prompt }}"</p>
+    <p id="chat">Reply: </p>
+    <script>
+        if (typeof window.sse !== 'undefined') sse.close();
+        let sse = new EventSource("/gen?prompt={{ prompt }}");
+           sse.onmessage = function(event) {
+            var data = event.data
+            console.log(data)
+            data = data.replace("\\n", "<br>")
+            document.getElementById("chat").innerHTML += data;
+        };
+        sse.onerror = function() {
+            sse.close();
+        };
+
+    </script>
+</body>
+</html>
+"#;
