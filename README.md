@@ -29,6 +29,7 @@ One day, Lily and Spot go to the park. They see a big slide. Lily wants to go on
 Lily climbs up the ladder. She sits on the slide. She holds Spot's leash. She says to Spot, "Ready, Spot? Let's go!" Spot barks. He jumps off the slide. He runs to the slide. He sees Lily. He runs to the slide. He jumps on the slide. He slides down. He goes very fast. He laughs.
 Lily claps. She says, "Good job, Spot! You are brave!" She hugs Spot. She says, "You are a good dog, Spot. You are a good dog." Spot barks.%
 ```
+Alternatively, you can open your browser `localhost:3000/?prompt=I have a dog,` and you will see the generated response!
 
 ### Engine Usage
 Of course you can skip the inference server and only develop/use the engine!
@@ -82,22 +83,22 @@ cargo run --bin engine --release --features gpu -- -m stories110M.bin  -t tokeni
 ```
 Model           | Platform          | Token/s
 :---------------|:------------------|:------------
-stories15M.bin  | RTX 4090          | 480.81 
-stories15M.bin  | Ryzen 7 5700X     | 402.35 
+stories15M.bin  | RTX 4090          | 480.81
+stories15M.bin  | Ryzen 7 5700X     | 402.35
 stories15M.bin  | Intel i9 13900KF  | 346.75
-stories15M.bin  | M1 Macbook Pro    | 196.47 
-stories15M.bin  | M2 Macbook Pro    | 194.81 
-stories110M.bin | RTX 4090          | 201.08 
-stories110M.bin | RTX 4070ti/CUBLAS | 113 
+stories15M.bin  | M1 Macbook Pro    | 196.47
+stories15M.bin  | M2 Macbook Pro    | 194.81
+stories110M.bin | RTX 4090          | 201.08
+stories110M.bin | RTX 4070ti/CUBLAS | 113
 stories110M.bin | Intel i9 13900KF  | 86
-stories110M.bin | RTX 4070ti        | 80 
-stories110M.bin | Ryzen 7 5700X     | 68 
-stories110M.bin | M2 Macbook Pro    | 52 
-stories110M.bin | M1 Macbook Pro    | 29 
+stories110M.bin | RTX 4070ti        | 80
+stories110M.bin | Ryzen 7 5700X     | 68
+stories110M.bin | M2 Macbook Pro    | 52
+stories110M.bin | M1 Macbook Pro    | 29
 llama2-7b.bin   | Intel i9 13900KF  | 2.42
-llama2-7b.bin   | Ryzen 7 5700X     | 1.38 
-llama2-7b.bin   | M2 Macbook Pro    | 0.12 
-llama2-7b.bin   | M1 Macbook Pro    | 0.02 
+llama2-7b.bin   | Ryzen 7 5700X     | 1.38
+llama2-7b.bin   | M2 Macbook Pro    | 0.12
+llama2-7b.bin   | M1 Macbook Pro    | 0.02
 
 
 Running llama2-7b f32 in M1 macbook is extremely slow since it requires 25GB memory but M1 only has 16GB total memory, the amount of swapping is huge.
