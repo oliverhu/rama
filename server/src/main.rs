@@ -1,6 +1,6 @@
 use async_channel::Sender;
 use axum::{
-    extract::{Path, Query, State}, http::StatusCode, response::Html, routing::{get, post}, Router
+    extract::{Query, State}, http::StatusCode, response::Html, routing::{get, post}, Router
 };
 use clap::Parser;
 use engine::{ClientRequest, EngineConfig, EngineService, ENGINE_SERVICE};
