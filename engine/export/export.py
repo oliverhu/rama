@@ -126,6 +126,80 @@ def legacy_export(model, filepath):
     out_file.close()
     print(f"wrote {filepath}")
 
+
+def legacy_export_q80(model, filepath):
+    """ Original export of llama2.c bin files, i.e. version v0 """
+    out_file = open(filepath, 'wb')
+
+    # first write out the header
+    hidden_dim = model.layers[0].feed_forward.w1.weight.shape[0]
+    p = model.params
+    shared_classifier = torch.equal(model.tok_embeddings.weight, model.output.weight)
+    # legacy format uses negative/positive vocab size as a shared classifier flag
+    if not shared_classifier:
+        p.vocab_size = -p.vocab_size
+    n_kv_heads = p.n_heads if p.n_kv_heads is None else p.n_kv_heads
+    header = struct.pack('iiiiiii', p.dim, hidden_dim, p.n_layers, p.n_heads,
+                                    n_kv_heads, p.vocab_size, p.max_seq_len)
+    out_file.write(header)
+
+    # next write out the embedding weights
+    serialize_fp32(out_file, model.tok_embeddings.weight)
+
+    # now all the layers
+    # attention weights
+    for layer in model.layers:
+        serialize_fp32(out_file, layer.attention_norm.weight)
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.attention.wq.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.attention.wk.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.attention.wv.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.attention.wo.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+
+    # ffn weights
+    for layer in model.layers:
+        # Norm weights stay in fp32
+        serialize_fp32(out_file, layer.ffn_norm.weight)
+
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.feed_forward.w1.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.feed_forward.w2.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.feed_forward.w3.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+
+    # final rmsnorm
+    serialize_fp32(out_file, model.norm.weight)
+    # freqs_cis
+    serialize_fp32(out_file, model.freqs_cos[:p.max_seq_len])
+    serialize_fp32(out_file, model.freqs_sin[:p.max_seq_len])
+
+    # final classifier weights
+    if not shared_classifier:
+        serialize_fp32(out_file, model.output.weight)
+
+    # write to binary file
+    out_file.close()
+    print(f"wrote {filepath}")
+
+
 # -----------------------------------------------------------------------------
 # new version
 

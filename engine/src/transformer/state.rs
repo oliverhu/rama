@@ -50,13 +50,14 @@ impl<'a, T: Storage> RunStateView<'a, T> {
     }
 }
 
-// Transformer Weights
+// Transformer Weights. For RMS, we will stick with FP32 while
+// the rest of the model weights can be quantized in opted in.
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct TransformerWeights<T: Storage> {
-    pub token_embedding_table: T,
-    pub rms_att_weight: T,
-    pub rms_ffn_weight: T,
+pub struct TransformerWeights<T: Storage, TF: Storage> {
+    pub token_embedding_table: TF,
+    pub rms_att_weight: TF,
+    pub rms_ffn_weight: TF,
 
     pub wq: T,
     pub wk: T,
@@ -66,7 +67,7 @@ pub struct TransformerWeights<T: Storage> {
     pub w2: T,
     pub w3: T,
 
-    pub rms_final_weight: T,
+    pub rms_final_weight: TF,
     pub freq_cis_real: T,
     pub freq_cis_imag: T,
     pub wcls_exists: bool,
