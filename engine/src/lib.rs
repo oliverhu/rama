@@ -63,7 +63,7 @@ pub struct EngineService {
 
     // Weights of the model in CPU memory.
     #[cfg(not(feature="gpu"))]
-    weights: TransformerWeights<Vec<f32>>,
+    weights: TransformerWeights<Vec<f32>, Vec<f32>>,
     #[cfg(feature="gpu")]
     weights: TransformerWeights<CudaSlice<f32>>,
 

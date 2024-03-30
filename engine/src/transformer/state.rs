@@ -54,20 +54,20 @@ impl<'a, T: Storage> RunStateView<'a, T> {
 // the rest of the model weights can be quantized in opted in.
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct TransformerWeights<T: Storage, TF: Storage> {
-    pub token_embedding_table: TF,
-    pub rms_att_weight: TF,
-    pub rms_ffn_weight: TF,
+pub struct TransformerWeights<T: Storage, Q: Storage> {
+    pub token_embedding_table: T,
+    pub rms_att_weight: T,
+    pub rms_ffn_weight: T,
 
-    pub wq: T,
-    pub wk: T,
-    pub wv: T,
-    pub wo: T,
-    pub w1: T,
-    pub w2: T,
-    pub w3: T,
+    pub wq: Q,
+    pub wk: Q,
+    pub wv: Q,
+    pub wo: Q,
+    pub w1: Q,
+    pub w2: Q,
+    pub w3: Q,
 
-    pub rms_final_weight: TF,
+    pub rms_final_weight: T,
     pub freq_cis_real: T,
     pub freq_cis_imag: T,
     pub wcls_exists: bool,
@@ -94,7 +94,7 @@ pub struct TransformerWeightsView<'a, T: Storage> {
 
 impl<'a> TransformerWeightsView<'a, Vec<f32>> {
     #[allow(dead_code)]
-    pub fn from_ws(ws: &'a TransformerWeights<Vec<f32>>) -> TransformerWeightsView<'a, Vec<f32>> {
+    pub fn from_ws(ws: &'a TransformerWeights<Vec<f32>, Vec<f32>>) -> TransformerWeightsView<'a, Vec<f32>> {
         TransformerWeightsView {
             token_embedding_table: View::new(&ws.token_embedding_table),
             rms_att_weight: View::new(&ws.rms_att_weight),

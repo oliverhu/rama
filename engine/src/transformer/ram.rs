@@ -1,6 +1,6 @@
 use std::{fs::File, io::BufReader};
 
-use super::{read_vec, state::{RunState, TransformerWeights}, Config};
+use super::{read_vec, state::{RunState, TransformerWeights}, Config, FromBytes, Storage};
 
 
 impl RunState<Vec<f32>> {
@@ -24,7 +24,7 @@ impl RunState<Vec<f32>> {
 
 }
 
-impl TransformerWeights<Vec<f32>> {
+impl<T: FromBytes, Q: FromBytes> TransformerWeights<Vec<T>, Vec<Q>> where Vec<T>: Storage, Vec<Q>: Storage {
     pub fn from_file(f: &mut BufReader<File>, c: &Config) -> Self {
         let head_size = c.dim / c.n_heads;
         Self {
@@ -43,8 +43,8 @@ impl TransformerWeights<Vec<f32>> {
             freq_cis_imag: read_vec(f, c.seq_len * head_size / 2),
             wcls_exists: !c.shared_weight,
             wcls: {
-                if c.shared_weight { vec![1.0] } else {
-                    read_vec::<f32>(f, c.vocab_size * c.dim)
+                if c.shared_weight { vec![] } else {
+                    read_vec::<T>(f, c.vocab_size * c.dim)
                 }
             },
         }

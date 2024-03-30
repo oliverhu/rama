@@ -3,6 +3,7 @@ pub mod hbm;
 pub mod ram;
 pub mod state;
 pub mod infer;
+pub mod ram_q80;
 
 use std::{convert::Infallible, fs::File, io::{self, BufReader}, ops::{Bound, Range, RangeBounds}, time::Duration};
 use async_channel::Sender;
