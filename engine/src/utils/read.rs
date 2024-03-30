@@ -10,12 +10,6 @@ impl FromBytes for f32 {
     }
 }
 
-impl FromBytes for u32 {
-    fn from_bytes(bytes: [u8; 4]) -> Self {
-        u32::from_le_bytes(bytes)
-    }
-}
-
 impl FromBytes for i32 {
     fn from_bytes(bytes: [u8; 4]) -> Self {
         i32::from_le_bytes(bytes)

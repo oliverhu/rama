@@ -578,6 +578,8 @@ def model_export(model, filepath, version, dtype=torch.float32):
         version1_export(model, filepath)
     elif version == 2:
         version2_export(model, filepath)
+    elif version == 80:
+        legacy_export_q80(model, filepath)
     elif version == -1:
         hf_export(model, filepath, dtype)
     else:
@@ -618,7 +620,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("filepath", type=str, help="the output filepath")
-    parser.add_argument("--version", default=0, type=int, help="the version to export with")
+    parser.add_argument("--version", default=80, type=int, help="the version to export with")
     parser.add_argument("--dtype", type=str, help="dtype of the model (fp16, fp32)", default="fp32")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--checkpoint", type=str, help="model checkpoint, .pt file")

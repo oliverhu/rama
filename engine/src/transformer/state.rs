@@ -52,6 +52,9 @@ impl<'a, T: Storage> RunStateView<'a, T> {
 
 // Transformer Weights. For RMS, we will stick with FP32 while
 // the rest of the model weights can be quantized in opted in.
+// In unquantized mode, T is Vec<f32> and each number represents a digit.
+// With quantization, Q is QuantizedTensor of size_of_each * Vec<i8>
+// and size_of_each / group_size * Vec<f32>
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct TransformerWeights<T: Storage, Q: Storage> {
