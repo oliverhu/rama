@@ -64,15 +64,15 @@ impl TransformerWeights<Vec<f32>, Vec<QuantizedTensor>> {
             wcls: vec![],
         };
         tw.dequantize();
-        if c.shared_weight { tw.wcls = tw.q_token; } else {
+        if c.shared_weight { tw.wcls = tw.q_token.clone(); } else {
             read_q80_vec(f, 1, c.vocab_size * c.dim);
         }
         tw
     }
 
     // dequantize the token_embedding_table
-    fn dequantize(&self) {
-        for i in 0..self.q_token.len() {
+    fn dequantize(&mut self) {
+        for i in 0..self.q_token[0].q.len() {
             self.token_embedding_table[i] = self.q_token[0].q[i] as f32 * self.q_token[0].s[i / 64];
         }
 

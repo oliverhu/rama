@@ -25,7 +25,7 @@ impl RunState<Vec<f32>> {
 }
 
 impl TransformerWeights<Vec<f32>, Vec<f32>> {
-    pub fn from_file(f: &mut BufReader<File>, c: &Config) -> Self {
+    pub fn from_file(f: &mut BufReader<File>, c: &Config) -> TransformerWeights<Vec<f32>, Vec<f32>> {
         let head_size = c.dim / c.n_heads;
         Self {
             token_embedding_table: read_vec(f, c.vocab_size * c.dim),

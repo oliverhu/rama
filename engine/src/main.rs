@@ -1,6 +1,7 @@
 use clap::Parser;
 use device::cpu::CPU;
 
+use transformer::ram_q80::QuantizedTensor;
 use tokenizer::bpe::Tokenizer;
 #[cfg(feature="gpu")]
 use device::gpu::GPU;
@@ -73,7 +74,7 @@ fn main() {
     let device = GPU::new();
 
     #[allow(unused_mut)]
-    let mut weights = TransformerWeights::from_quantized_file(rd, &config);
+    let mut weights = TransformerWeights::<Vec<f32>, Vec<QuantizedTensor>>::from_file(rd, &config);
     #[cfg(feature="gpu")]
     let weights = TransformerWeights::from_weight(&mut weights, &device);
     let mut state = RunState::from_config(&config);

@@ -102,7 +102,7 @@ impl EngineService {
         let device = GPU::new();
 
         #[allow(unused_mut)]
-        let mut weights = TransformerWeights::from_file(rd, &model_config);
+        let mut weights = TransformerWeights::<Vec<f32>, Vec<f32>>::from_file(rd, &model_config);
         #[cfg(feature="gpu")]
         let weights = TransformerWeights::from_weight(&mut weights, &device);
 
