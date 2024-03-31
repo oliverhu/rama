@@ -172,10 +172,6 @@ impl Device<CudaSlice<f32>> for GPU {
         next
     }
 
-    fn matmul_1d(&self, o: &mut MutView<'_, CudaSlice<f32>>, w: &View<'_, CudaSlice<f32>>, x: &View<'_, CudaSlice<f32>>, n: usize) {
-            self.matmul(o, w, x, n, n, 1)
-    }
-
     fn matmul(&self, o: &mut MutView<'_, CudaSlice<f32>>, a: &View<'_, CudaSlice<f32>>, b: &View<'_, CudaSlice<f32>>, width: usize, o_rows: usize, o_cols: usize) {
         let blas_cfg: GemmConfig<f32> = GemmConfig {
             transa: NO_TRANS,

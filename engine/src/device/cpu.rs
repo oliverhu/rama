@@ -96,12 +96,6 @@ impl Device<Vec<f32>> for CPU {
         }
     }
 
-    fn matmul_1d(&self, o: &mut MutView<'_, Vec<f32>>, w: &View<'_, Vec<f32>>, x: &View<'_, Vec<f32>>, n: usize)
-    {
-        let le = o.as_ref().len();
-        let _ = self.matmul(o, w, x, n, le, 1);
-    }
-
     fn rmsnorm(&self, o: &mut MutView<'_, Vec<f32>>, x: &View<'_, Vec<f32>>,
                         weight: &View<'_, Vec<f32>>, _n: usize) {
         let xr = x.range.clone();
