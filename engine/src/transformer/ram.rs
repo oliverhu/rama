@@ -1,6 +1,6 @@
 use std::{fs::File, io::BufReader};
 
-use super::{read_vec, state::{RunState, TransformerWeights}, Config, FromBytes, Storage};
+use super::{read_vec, state::{RunState, TransformerWeights}, Config};
 
 
 impl RunState<Vec<f32>> {
@@ -29,6 +29,7 @@ impl TransformerWeights<Vec<f32>, Vec<f32>> {
         let head_size = c.dim / c.n_heads;
         Self {
             token_embedding_table: read_vec(f, c.vocab_size * c.dim),
+            q_token: vec![0.0f32; c.vocab_size * c.dim],
             rms_att_weight: read_vec(f, c.n_layers * c.dim),
             wq: read_vec(f, c.n_layers * c.dim * c.dim),
             wk: read_vec(f, c.n_layers * c.dim * c.dim),
@@ -44,7 +45,7 @@ impl TransformerWeights<Vec<f32>, Vec<f32>> {
             wcls_exists: !c.shared_weight,
             wcls: {
                 if c.shared_weight { vec![] } else {
-                    read_vec::<T>(f, c.vocab_size * c.dim)
+                    read_vec::<f32>(f, c.vocab_size * c.dim)
                 }
             },
         }

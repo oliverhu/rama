@@ -73,7 +73,7 @@ fn main() {
     let device = GPU::new();
 
     #[allow(unused_mut)]
-    let mut weights = TransformerWeights::from_file(rd, &config);
+    let mut weights = TransformerWeights::from_quantized_file(rd, &config);
     #[cfg(feature="gpu")]
     let weights = TransformerWeights::from_weight(&mut weights, &device);
     let mut state = RunState::from_config(&config);
@@ -81,26 +81,26 @@ fn main() {
     #[cfg(feature="gpu")]
     let mut state = RunState::from_state(&mut state, &device);
 
-    #[cfg(not(feature="gpu"))]
-    let wv = TransformerWeightsView::from_ws(&weights);
-    #[cfg(feature="gpu")]
-    let wv = TransformerWeightsView::from_gpu_ws(&weights);
+    // #[cfg(not(feature="gpu"))]
+    // let wv = TransformerWeightsView::from_ws(&weights);
+    // #[cfg(feature="gpu")]
+    // let wv = TransformerWeightsView::from_gpu_ws(&weights);
 
-    let mut rsv = RunStateView::from_rs(&mut state);
+    // let mut rsv = RunStateView::from_rs(&mut state);
 
-    let step = args.step;
-    let prompt = args.prompt;
-    let temperature = args.temperature;
-    let tokenizer = Tokenizer::new(token_path, config.vocab_size).unwrap();
+    // let step = args.step;
+    // let prompt = args.prompt;
+    // let temperature = args.temperature;
+    // let tokenizer = Tokenizer::new(token_path, config.vocab_size).unwrap();
 
-    let start: SystemTime = SystemTime::now();
+    // let start: SystemTime = SystemTime::now();
 
-    let _ = transformer::generate(&config, &tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &device);
-    let elapsed = start.elapsed().unwrap();
-    println!("\n--------------------------------");
-    println!("elapsed: {}.{:03} s, avg tok/s: {}",
-            elapsed.as_secs(), elapsed.subsec_millis(),
-            (step - 1) as f32 / elapsed.as_secs_f32());
+    // let _ = transformer::generate(&config, &tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &device);
+    // let elapsed = start.elapsed().unwrap();
+    // println!("\n--------------------------------");
+    // println!("elapsed: {}.{:03} s, avg tok/s: {}",
+    //         elapsed.as_secs(), elapsed.subsec_millis(),
+    //         (step - 1) as f32 / elapsed.as_secs_f32());
 
 }
 

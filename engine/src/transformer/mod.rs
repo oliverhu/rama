@@ -167,13 +167,13 @@ impl Config {
     }
 }
 
-pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
+pub fn generate<'a, T: Storage, Q: Storage, D: Device<T, Q>>(cfg: &Config,
     tokenizer: &Tokenizer,
     prompt: String,
     temperature: f32,
     steps: usize,
     topp: f32,
-    wv: &TransformerWeightsView<'a, T>,
+    wv: &TransformerWeightsView<'a, T, Q>,
     rsv: &mut RunStateView<'a, T>,
     device: &D
 ) -> io::Result<String>
@@ -207,13 +207,13 @@ pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
 }
 
 #[allow(dead_code)]
-pub async fn generate_stream<'a, T: Storage, D: Device<T>>(cfg: &Config,
+pub async fn generate_stream<'a, T: Storage, Q: Storage, D: Device<T, Q>>(cfg: &Config,
     tokenizer: &Tokenizer,
     prompt: String,
     temperature: f32,
     steps: usize,
     topp: f32,
-    wv: &TransformerWeightsView<'a, T>,
+    wv: &TransformerWeightsView<'a, T, Q>,
     rsv: &mut RunStateView<'a, T>,
     device: &D,
     sender: Sender<Result<Event, Infallible>>

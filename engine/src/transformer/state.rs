@@ -59,6 +59,7 @@ impl<'a, T: Storage> RunStateView<'a, T> {
 #[derive(Debug, Clone)]
 pub struct TransformerWeights<T: Storage, Q: Storage> {
     pub token_embedding_table: T,
+    pub q_token: Q,
     pub rms_att_weight: T,
     pub rms_ffn_weight: T,
 
@@ -74,32 +75,34 @@ pub struct TransformerWeights<T: Storage, Q: Storage> {
     pub freq_cis_real: T,
     pub freq_cis_imag: T,
     pub wcls_exists: bool,
-    pub wcls: T,
+    pub wcls: Q,
 }
 
-pub struct TransformerWeightsView<'a, T: Storage> {
+pub struct TransformerWeightsView<'a, T: Storage, Q: Storage> {
     pub token_embedding_table: View<'a, T>,
+    pub q_token: View<'a, Q>,
     pub rms_att_weight:  View<'a, T>,
     pub rms_ffn_weight: View<'a, T>,
-    pub wq: View<'a, T>,
-    pub wk: View<'a, T>,
-    pub wv: View<'a, T>,
-    pub wo: View<'a, T>,
-    pub w1: View<'a, T>,
-    pub w2: View<'a, T>,
-    pub w3: View<'a, T>,
+    pub wq: View<'a, Q>,
+    pub wk: View<'a, Q>,
+    pub wv: View<'a, Q>,
+    pub wo: View<'a, Q>,
+    pub w1: View<'a, Q>,
+    pub w2: View<'a, Q>,
+    pub w3: View<'a, Q>,
     pub rms_final_weight:View<'a, T>,
     pub freq_cis_real: View<'a, T>,
     pub freq_cis_imag: View<'a, T>,
     pub wcls_exists: bool,
-    pub wcls: View<'a, T>,
+    pub wcls: View<'a, Q>,
 }
 
-impl<'a> TransformerWeightsView<'a, Vec<f32>> {
+impl<'a, T> TransformerWeightsView<'a, Vec<f32>, Vec<T>> where Vec<T>: Storage {
     #[allow(dead_code)]
-    pub fn from_ws(ws: &'a TransformerWeights<Vec<f32>, Vec<f32>>) -> TransformerWeightsView<'a, Vec<f32>> {
+    pub fn from_ws(ws: &'a TransformerWeights<Vec<f32>, Vec<T>>) -> TransformerWeightsView<'a, Vec<f32>, Vec<T>> {
         TransformerWeightsView {
             token_embedding_table: View::new(&ws.token_embedding_table),
+            q_token: View::new(&ws.q_token),
             rms_att_weight: View::new(&ws.rms_att_weight),
             rms_ffn_weight: View::new(&ws.rms_ffn_weight),
             wq: View::new(&ws.wq),
@@ -116,7 +119,7 @@ impl<'a> TransformerWeightsView<'a, Vec<f32>> {
                 if ws.wcls_exists {
                     View::new(&ws.wcls)
                 } else {
-                    View::new(&ws.token_embedding_table)
+                    View::new(&ws.q_token)
                 }
             },
             wcls_exists: ws.wcls_exists,

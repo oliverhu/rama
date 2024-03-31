@@ -144,7 +144,10 @@ def legacy_export_q80(model, filepath):
     out_file.write(header)
 
     # next write out the embedding weights
-    serialize_fp32(out_file, model.tok_embeddings.weight)
+    # serialize_fp32(out_file, model.tok_embeddings.weight)
+    q, s, _ = quantize_q80(model.tok_embeddings.weight, 64)
+    serialize_int8(out_file, q) # save the tensor in int8
+    serialize_fp32(out_file, s) # save scale factors
 
     # now all the layers
     # attention weights

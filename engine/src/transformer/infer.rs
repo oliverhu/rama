@@ -5,12 +5,14 @@ use crate::device::device::Device;
 
 use super::{state::{RunStateView, TransformerWeightsView}, Config, Storage};
 
-pub fn forward<'a, T: Storage, D: Device<T>>(cfg: &Config, wv: &TransformerWeightsView<'a, T>, rsv: &mut RunStateView<'a, T>, token: usize, pos: usize,  device: &D) {
+pub fn forward<'a, T: Storage, Q: Storage, D: Device<T, Q>>(cfg: &Config, wv: &TransformerWeightsView<'a, T, Q>, rsv: &mut RunStateView<'a, T>, token: usize, pos: usize,  device: &D, is_q: bool) {
     // let mut cpu_state = RunState::from_config(&cfg); // for debugging
     let dim: usize = cfg.dim;
     let hidden_dim = cfg.hidden_dim;
     let head_size = dim / cfg.n_heads;
-    device.copy_from_slice(&mut rsv.x, &wv.token_embedding_table.slice(token * dim..((token + 1) * cfg.dim)), dim);
+    if is_q {
+        populate
+    }
 
     let pos_real = wv.freq_cis_real.slice(pos * (head_size / 2)..);
     let pos_img = wv.freq_cis_imag.slice(pos * (head_size / 2)..);
