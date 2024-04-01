@@ -2,14 +2,78 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
 
-use crate::transformer::{infer::sample_top_q, state::{RunState, RunStateView}, Config, MutView, View};
-
+use crate::transformer::{infer::sample_top_q, state::{RunState, RunStateView}, Config, MutView, Storage, View};
+use crate::transformer::ram_q80::QuantizedTensor;
 use wide::f32x4;
 
-use super::device::Device;
+use super::device::{Device, QuantDevice};
 
 #[derive(Debug)]
 pub struct CPU {}
+
+impl QuantDevice<Vec<f32>, QuantizedTensor> for CPU {
+    fn matmul_q(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, QuantizedTensor>, b: &View<'_, QuantizedTensor>, width: usize, o_rows: usize, o_cols: usize) {
+        let or = o.range.clone();
+        let o = &mut o.as_mut()[or];
+
+        let gs = 2;
+
+        let aqvalue = &a.as_ref().q[a.range.clone()];
+        let ascale = &a.as_ref().s[a.range.clone().start / gs..a.range.clone().end / gs];
+
+        let bqvalue = &b.as_ref().q[b.range.clone()];
+        let bscale = &b.as_ref().s[b.range.clone().start / gs..b.range.clone().end / gs];
+
+        o.iter_mut().enumerate().for_each(
+            |(idx, o)| {
+                let r = idx / o_cols;
+                let c = idx % o_cols;
+                // Reset to the naive impl of matmul for easier debugging. Calculate the flattened position for value & scale.
+                let mut v = 0f32;
+
+                for k in 0..width {
+                    let pre_scale = aqvalue[r * width + k] * bqvalue[k * o_cols + c];
+                    v += pre_scale as f32 * ascale[(r * width + k) / gs] * bscale [(k * o_cols + c) / gs];
+                }
+                *o = v as f32;
+            }
+
+        );
+    }
+}
+
+#[test]
+fn test_matmul() {
+
+    // Test quantized matmul
+    let uqt = QuantizedTensor { q: vec![1, 2, 3, 4], s: vec![1.0, 1.0] };
+    let uqt_view = View::new(&uqt);
+    let uqt_view2 = View::new(&uqt);
+
+    let qt = QuantizedTensor { q: vec![1, 2, 3, 4], s: vec![0.5, 0.5] };
+    let qt_view = View::new(&qt);
+    let qt_2 = qt.clone();
+    let qt_view_2 = View::new(&qt_2);
+
+    let mut result = vec![1.0f32, 2.0f32, 3.0, 4.0];
+    let mut qt_mut = MutView::new(&mut result);
+
+    let cpu = CPU {};
+    cpu.matmul_q(&mut qt_mut, &qt_view, &qt_view_2, 2, 2, 2);
+
+    assert_eq!(*qt_mut.data, vec![1.75f32, 2.5, 3.75, 5.5]);
+
+    cpu.matmul_q(&mut qt_mut, &uqt_view, &uqt_view2, 2, 2, 2);
+    assert_eq!(*qt_mut.data, vec![7.0f32, 10.0, 15.0, 22.0]);
+
+    // Test normal matmul, put them together right now for the same of comparing.
+    let qt = vec![1.0f32, 2.0, 3.0, 4.0];
+    let qt_view = View::new(&qt);
+    let qt_2 = vec![1.0f32, 2.0, 3.0, 4.0];
+    let qt2_view = View::new(&qt_2);
+    cpu.matmul_test(&mut qt_mut, &qt_view, &qt2_view, 2, 2, 2);
+    println!("{:?}", *qt_mut.data);
+}
 
 impl Device<Vec<f32>> for CPU {
 
@@ -20,7 +84,7 @@ impl Device<Vec<f32>> for CPU {
         .for_each(|(a, b)| *a += *b);
     }
 
-    fn multi_head_attention(&self, rsv: &mut RunStateView<'_, Vec<f32>>,
+    fn multi_head_attention(&self, rsv: &mut RunStateView<'_, Vec<f32>, Vec<f32>>,
                                 cfg: &Config,
                                 layer: usize,
                                 pos: usize,) {
@@ -146,13 +210,12 @@ impl Device<Vec<f32>> for CPU {
                     v += a_wide * b_wide;
                 }
                 *o = v.reduce_add();
-
             }
 
         );
     }
 
-    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, Vec<f32>>, temperature: f32, topp: f32) -> usize {
+    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, Vec<f32>, Vec<f32>>, temperature: f32, topp: f32) -> usize {
         let next;
 
         let lr = rsv.logits.range.clone();
@@ -178,7 +241,7 @@ impl Device<Vec<f32>> for CPU {
         next
     }
 
-    fn to_cpu(&self, _state: &RunStateView<Vec<f32>>, _cpu_state: &mut RunState<Vec<f32>>) {
+    fn to_cpu(&self, _state: &RunStateView<Vec<f32>, Vec<f32>>, _cpu_state: &mut RunState<Vec<f32>, Vec<f32>>) {
         // no need to do anything since it is already CPU.
     }
 }
@@ -189,5 +252,30 @@ impl CPU {
         x.par_iter_mut().for_each(|a| *a=(*a-max).exp());
         let sum = x.par_iter().sum::<f32>();
         x.par_iter_mut().for_each(|a| *a /= sum);
+    }
+
+    #[allow(dead_code)]
+    fn matmul_test(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<f32>>, b: &View<'_, Vec<f32>>, width: usize, _o_rows: usize, o_cols: usize)
+    {
+        let or = o.range.clone();
+        let o = &mut o.as_mut()[or];
+
+        let ar = a.range.clone();
+        let a = &a.as_ref()[ar];
+
+        let br = b.range.clone();
+        let b = &b.as_ref()[br];
+        o.par_iter_mut().enumerate().for_each(
+            |(idx, o)| {
+                let r = idx / o_cols;
+                let c = idx % o_cols;
+                let mut v = 0.0;
+                for k in 0..width {
+                    v += a[r * width + k] * b[k * o_cols + c];
+                }
+                *o = v;
+            }
+
+        );
     }
 }

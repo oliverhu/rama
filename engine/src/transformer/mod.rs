@@ -1,6 +1,7 @@
 #[cfg(feature = "gpu")]
 pub mod hbm;
 pub mod ram;
+pub mod ram_q80;
 pub mod state;
 pub mod infer;
 
@@ -13,11 +14,13 @@ use std::io::{prelude::*, stdout};
 
 use self::state::{RunStateView, TransformerWeightsView};
 
+#[derive(Debug)]
 pub struct View<'a, T: Storage> {
     pub data: &'a T,
     pub range: Range<usize>,
 }
 
+#[derive(Debug)]
 pub struct MutView<'a, MT> where MT: Storage {
     pub data: &'a mut MT,
     pub range: Range<usize>,
@@ -173,7 +176,7 @@ pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
     steps: usize,
     topp: f32,
     wv: &TransformerWeightsView<'a, T>,
-    rsv: &mut RunStateView<'a, T>,
+    rsv: &mut RunStateView<'a, T, T>,
     device: &D
 ) -> io::Result<String>
     {
@@ -213,7 +216,7 @@ pub async fn generate_stream<'a, T: Storage, D: Device<T>>(cfg: &Config,
     steps: usize,
     topp: f32,
     wv: &TransformerWeightsView<'a, T>,
-    rsv: &mut RunStateView<'a, T>,
+    rsv: &mut RunStateView<'a, T, T>,
     device: &D,
     sender: Sender<Result<Event, Infallible>>
 ) {

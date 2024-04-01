@@ -1,7 +1,10 @@
 use super::{MutView, Storage, View};
 
+/// RunState has two generic variables, T & Q. T is
+/// used for storing f32 related storage types, Q is
+/// used to store u8/u4 types to represent the values.
 #[derive(Default)]
-pub struct RunState<T: Storage> {
+pub struct RunState<T: Storage, Q: Storage> {
     pub x: T,
     pub xb: T,
     pub xb2: T,
@@ -14,9 +17,11 @@ pub struct RunState<T: Storage> {
     pub logits: T,
     pub key_cache: T,
     pub value_cache: T,
+    pub xq: Q, // quantized x
+    pub hq: Q, // quantized h
 }
 
-pub struct RunStateView<'a, T: Storage> {
+pub struct RunStateView<'a, T: Storage, Q: Storage> {
     pub x: MutView<'a, T>,
     pub xb: MutView<'a, T>,
     pub xb2: MutView<'a, T>,
@@ -29,10 +34,12 @@ pub struct RunStateView<'a, T: Storage> {
     pub logits: MutView<'a, T>,
     pub key_cache: MutView<'a, T>,
     pub value_cache: MutView<'a, T>,
+    pub xq: MutView<'a, Q>, // quantized x
+    pub hq: MutView<'a, Q>, // quantized h
 }
 
-impl<'a, T: Storage> RunStateView<'a, T> {
-    pub fn from_rs(rs: &mut RunState<T>) -> RunStateView<'_, T> {
+impl<'a, T: Storage, Q: Storage> RunStateView<'a, T, Q> {
+    pub fn from_rs(rs: &mut RunState<T, Q>) -> RunStateView<'_, T, Q> {
         RunStateView {
             x: MutView::new(&mut rs.x),
             xb: MutView::new(&mut rs.xb),
@@ -46,6 +53,8 @@ impl<'a, T: Storage> RunStateView<'a, T> {
             logits: MutView::new(&mut rs.logits),
             key_cache: MutView::new(&mut rs.key_cache),
             value_cache: MutView::new(&mut rs.value_cache),
+            xq: MutView::new(&mut rs.xq),
+            hq: MutView::new(&mut rs.hq),
         }
     }
 }
@@ -53,24 +62,26 @@ impl<'a, T: Storage> RunStateView<'a, T> {
 // Transformer Weights
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct TransformerWeights<T: Storage> {
+pub struct TransformerWeights<T: Storage, Q: Storage> {
     pub token_embedding_table: T,
+    pub q_token: Q,
+
     pub rms_att_weight: T,
     pub rms_ffn_weight: T,
 
-    pub wq: T,
-    pub wk: T,
-    pub wv: T,
-    pub wo: T,
-    pub w1: T,
-    pub w2: T,
-    pub w3: T,
+    pub wq: Q,
+    pub wk: Q,
+    pub wv: Q,
+    pub wo: Q,
+    pub w1: Q,
+    pub w2: Q,
+    pub w3: Q,
 
     pub rms_final_weight: T,
     pub freq_cis_real: T,
     pub freq_cis_imag: T,
     pub wcls_exists: bool,
-    pub wcls: T,
+    pub wcls: Q,
 }
 
 pub struct TransformerWeightsView<'a, T: Storage> {

@@ -3,7 +3,7 @@ use std::{fs::File, io::BufReader};
 use super::{read_vec, state::{RunState, TransformerWeights}, Config};
 
 
-impl RunState<Vec<f32>> {
+impl RunState<Vec<f32>, Vec<f32>> {
     pub fn from_config(cfg: &Config) -> Self {
         let kv_dim = cfg.dim * cfg.n_kv_heads / cfg.n_heads;
         Self {
@@ -19,6 +19,8 @@ impl RunState<Vec<f32>> {
             logits: vec![0.0; cfg.vocab_size as usize],
             key_cache: vec![0.0; cfg.n_layers * cfg.seq_len * kv_dim as usize],
             value_cache: vec![0.0; cfg.n_layers * cfg.seq_len * kv_dim as usize],
+            xq: vec![0.0; cfg.dim as usize],
+            hq: vec![0.0; cfg.dim as usize],
         }
     }
 

@@ -126,6 +126,87 @@ def legacy_export(model, filepath):
     out_file.close()
     print(f"wrote {filepath}")
 
+
+def legacy_export_q80(model, filepath):
+    # TODO: ONLY KEEP THE FIRST LAYER FOR DEBUGGING
+    out_file = open(filepath, 'wb')
+
+    # first write out the header
+    hidden_dim = model.layers[0].feed_forward.w1.weight.shape[0]
+    p = model.params
+    shared_classifier = torch.equal(model.tok_embeddings.weight, model.output.weight)
+    # legacy format uses negative/positive vocab size as a shared classifier flag
+    if not shared_classifier:
+        p.vocab_size = -p.vocab_size
+
+    p.n_layers = 1
+    model.layers = model.layers[:1]
+
+    n_kv_heads = p.n_heads if p.n_kv_heads is None else p.n_kv_heads
+    header = struct.pack('iiiiiii', p.dim, hidden_dim, p.n_layers, p.n_heads,
+                                    n_kv_heads, p.vocab_size, p.max_seq_len)
+    out_file.write(header)
+
+    # next write out the embedding weights
+    # serialize_fp32(out_file, model.tok_embeddings.weight)
+    q, s, _ = quantize_q80(model.tok_embeddings.weight, 64)
+    serialize_int8(out_file, q) # save the tensor in int8
+    serialize_fp32(out_file, s) # save scale factors
+
+    # now all the layers
+    # attention weights
+    for layer in model.layers:
+        serialize_fp32(out_file, layer.attention_norm.weight)
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.attention.wq.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.attention.wk.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.attention.wv.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.attention.wo.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+
+    # ffn weights
+    for layer in model.layers:
+        # Norm weights stay in fp32
+        serialize_fp32(out_file, layer.ffn_norm.weight)
+
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.feed_forward.w1.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.feed_forward.w2.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+    for layer in model.layers:
+        q, s, _ = quantize_q80(layer.feed_forward.w3.weight, 64)
+        serialize_int8(out_file, q) # save the tensor in int8
+        serialize_fp32(out_file, s) # save scale factors
+
+    # final rmsnorm
+    serialize_fp32(out_file, model.norm.weight)
+    # freqs_cis
+    serialize_fp32(out_file, model.freqs_cos[:p.max_seq_len])
+    serialize_fp32(out_file, model.freqs_sin[:p.max_seq_len])
+
+    # final classifier weights
+    if not shared_classifier:
+        serialize_fp32(out_file, model.output.weight)
+
+    # write to binary file
+    out_file.close()
+    print(f"wrote {filepath}")
+
+
 # -----------------------------------------------------------------------------
 # new version
 
@@ -269,7 +350,7 @@ def hf_export(llama_model, filepath, group_size=64, dtype=torch.float32):
         print("Please run `pip install transformers` to install it")
         return None
 
-    # Generate LlamaModel state_dict
+    # Generate LlamaModel state_dict
     hf_state_dict = {}
 
     # Sometimes we have repeated key values for the heads
@@ -342,7 +423,7 @@ def hf_export(llama_model, filepath, group_size=64, dtype=torch.float32):
 
 
     # Save files in directory filepath
-    # First make the directory if it doesn't exist
+    # First make the directory if it doesn't exist
     os.makedirs(filepath, exist_ok=True)
 
     # Save the state dictionary in .bin format, and config as .json
@@ -504,6 +585,8 @@ def model_export(model, filepath, version, dtype=torch.float32):
         version1_export(model, filepath)
     elif version == 2:
         version2_export(model, filepath)
+    elif version == 80:
+        legacy_export_q80(model, filepath)
     elif version == -1:
         hf_export(model, filepath, dtype)
     else:
@@ -544,7 +627,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("filepath", type=str, help="the output filepath")
-    parser.add_argument("--version", default=0, type=int, help="the version to export with")
+    parser.add_argument("--version", default=80, type=int, help="the version to export with")
     parser.add_argument("--dtype", type=str, help="dtype of the model (fp16, fp32)", default="fp32")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--checkpoint", type=str, help="model checkpoint, .pt file")
