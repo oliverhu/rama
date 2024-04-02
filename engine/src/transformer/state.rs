@@ -103,9 +103,9 @@ pub struct TransformerWeightsView<'a, T: Storage, Q: Storage> {
     pub wcls: View<'a, Q>,
 }
 
-impl<'a> TransformerWeightsView<'a, Vec<f32>, Vec<f32>> {
+impl<'a, T: Storage, Q: Storage> TransformerWeightsView<'a, T, Q> {
     #[allow(dead_code)]
-    pub fn from_ws(ws: &'a TransformerWeights<Vec<f32>, Vec<f32>>) -> TransformerWeightsView<'a, Vec<f32>, Vec<f32>> {
+    pub fn from_ws(ws: &'a TransformerWeights<T, Q>) -> TransformerWeightsView<'a, T, Q> {
         TransformerWeightsView {
             token_embedding_table: View::new(&ws.token_embedding_table),
             rms_att_weight: View::new(&ws.rms_att_weight),
@@ -124,7 +124,7 @@ impl<'a> TransformerWeightsView<'a, Vec<f32>, Vec<f32>> {
                 if ws.wcls_exists {
                     View::new(&ws.wcls)
                 } else {
-                    View::new(&ws.token_embedding_table)
+                    View::new(&ws.q_token)
                 }
             },
             wcls_exists: ws.wcls_exists,
