@@ -40,7 +40,7 @@ fn read_q80_vec(rd: &mut BufReader<File>, n_layer: usize, size_each: usize) -> V
     (0..n_layer).map(|_| read_q80_tensor(rd, size_each)).collect()
 }
 
-impl TransformerWeights<Vec<f32>> {
+// impl TransformerWeights<Vec<f32>> {
     // #[allow(dead_code)]
     // pub fn from_file(f: &mut BufReader<File>, c: &Config) -> Self {
     //     let head_size = c.dim / c.n_heads;
@@ -77,4 +77,4 @@ impl TransformerWeights<Vec<f32>> {
 
     // }
 
-}
+// }

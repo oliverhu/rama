@@ -95,7 +95,7 @@ fn main() {
 
     let start: SystemTime = SystemTime::now();
 
-    let _ = transformer::generate(&config, &tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &device);
+    let _ = transformer::generate::<Vec<f32>, Vec<f32>, CPU>(&config, &tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &device);
     let elapsed = start.elapsed().unwrap();
     println!("\n--------------------------------");
     println!("elapsed: {}.{:03} s, avg tok/s: {}",

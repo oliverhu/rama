@@ -85,7 +85,7 @@ pub struct TransformerWeights<T: Storage, Q: Storage> {
 }
 
 pub struct TransformerWeightsView<'a, T: Storage, Q: Storage> {
-    pub token_embedding_table: View<'a, Q>,
+    pub token_embedding_table: View<'a, T>,
     pub q_token: View<'a, Q>,
     pub rms_att_weight:  View<'a, T>,
     pub rms_ffn_weight: View<'a, T>,

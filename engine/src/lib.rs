@@ -63,7 +63,7 @@ pub struct EngineService {
 
     // Weights of the model in CPU memory.
     #[cfg(not(feature="gpu"))]
-    weights: TransformerWeights<Vec<f32>>,
+    weights: TransformerWeights<Vec<f32>, Vec<f32>>,
     #[cfg(feature="gpu")]
     weights: TransformerWeights<CudaSlice<f32>>,
 
@@ -149,7 +149,7 @@ async fn handler() {
                     let step = es.eng_config.step;
                     let temperature = es.eng_config.temperature;
                     let topp = es.eng_config.topp;
-                    transformer::generate_stream(&es.model_config, &es.tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &es.device, cr.sender).await;
+                    transformer::generate_stream::<Vec<f32>, Vec<f32>, CPU>(&es.model_config, &es.tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &es.device, cr.sender).await;
                 });
             },
             Err(_) => {

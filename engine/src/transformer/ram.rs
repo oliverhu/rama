@@ -26,7 +26,7 @@ impl RunState<Vec<f32>, Vec<f32>> {
 
 }
 
-impl TransformerWeights<Vec<f32>> {
+impl TransformerWeights<Vec<f32>, Vec<f32>> {
     pub fn from_file(f: &mut BufReader<File>, c: &Config) -> Self {
         let head_size = c.dim / c.n_heads;
         Self {
@@ -49,6 +49,7 @@ impl TransformerWeights<Vec<f32>> {
                     read_vec::<f32>(f, c.vocab_size * c.dim)
                 }
             },
+            q_token: vec![1.0; c.vocab_size * c.dim],
         }
     }
 

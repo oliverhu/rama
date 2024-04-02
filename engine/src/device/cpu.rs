@@ -75,7 +75,7 @@ fn test_matmul() {
     println!("{:?}", *qt_mut.data);
 }
 
-impl Device<Vec<f32>> for CPU {
+impl Device<Vec<f32>, Vec<f32>> for CPU {
 
     fn array_add(&self, target: &mut MutView<'_, Vec<f32>>, source: &View<'_, Vec<f32>>, _n: usize) {
         let s_range = source.range.clone();

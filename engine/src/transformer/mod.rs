@@ -169,13 +169,13 @@ impl Config {
     }
 }
 
-pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
+pub fn generate<'a, T: Storage, Q: Storage, D: Device<T, T>>(cfg: &Config,
     tokenizer: &Tokenizer,
     prompt: String,
     temperature: f32,
     steps: usize,
     topp: f32,
-    wv: &TransformerWeightsView<'a, T>,
+    wv: &TransformerWeightsView<'a, T, T>,
     rsv: &mut RunStateView<'a, T, T>,
     device: &D
 ) -> io::Result<String>
@@ -188,7 +188,7 @@ pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
     let mut response = "".to_owned();
 
     while pos < steps {
-        forward(cfg, wv, rsv, token, pos, device);
+        forward::<T, Q, D>(cfg, wv, rsv, token, pos, device);
 
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
@@ -209,13 +209,13 @@ pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
 }
 
 #[allow(dead_code)]
-pub async fn generate_stream<'a, T: Storage, D: Device<T>>(cfg: &Config,
+pub async fn generate_stream<'a, T: Storage, Q: Storage, D: Device<T, T>>(cfg: &Config,
     tokenizer: &Tokenizer,
     prompt: String,
     temperature: f32,
     steps: usize,
     topp: f32,
-    wv: &TransformerWeightsView<'a, T>,
+    wv: &TransformerWeightsView<'a, T, T>,
     rsv: &mut RunStateView<'a, T, T>,
     device: &D,
     sender: Sender<Result<Event, Infallible>>
@@ -228,7 +228,7 @@ pub async fn generate_stream<'a, T: Storage, D: Device<T>>(cfg: &Config,
     let mut response = "".to_owned();
 
     while pos < steps {
-        forward(cfg, wv, rsv, token, pos, device);
+        forward::<T, Q, D>(cfg, wv, rsv, token, pos, device);
 
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
