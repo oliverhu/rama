@@ -138,6 +138,7 @@ pub struct Config {
     pub vocab_size: usize,
     pub seq_len: usize,
     pub shared_weight: bool,
+    pub is_quantized: bool, // flag to tell if the model weights are quantized.
 }
 
 impl Config {
@@ -161,6 +162,7 @@ impl Config {
             },
             seq_len: read::<i32>(f) as usize,
             shared_weight: false,
+            is_quantized: false,
         };
         Self {
             shared_weight: shared_weight,

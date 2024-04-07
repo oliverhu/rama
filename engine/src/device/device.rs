@@ -25,4 +25,5 @@ pub trait Device<T: Storage, Q: Storage> {
 // The only function that deals with quans stuff is matrix multiplication.
 pub trait QuantDevice<T: Storage, Q: Storage> {
     fn matmul_q(&self, o: &mut MutView<'_, T>, a: &View<'_, Q>, b: &View<'_, Q>, width: usize, o_rows: usize, o_cols: usize);
+    fn quantize(&self, o: &mut MutView<'_, Q>, a: &View<'_, T>, n: usize);
 }

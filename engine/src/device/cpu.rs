@@ -11,18 +11,17 @@ use super::device::{Device, QuantDevice};
 #[derive(Debug)]
 pub struct CPU {}
 
-impl QuantDevice<Vec<f32>, QuantizedTensor> for CPU {
-    fn matmul_q(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, QuantizedTensor>, b: &View<'_, QuantizedTensor>, width: usize, o_rows: usize, o_cols: usize) {
+const GS: usize = 2;
+impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
+    fn matmul_q(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<QuantizedTensor>>, b: &View<'_, Vec<QuantizedTensor>>, width: usize, o_rows: usize, o_cols: usize) {
         let or = o.range.clone();
         let o = &mut o.as_mut()[or];
 
-        let gs = 2;
 
-        let aqvalue = &a.as_ref().q[a.range.clone()];
-        let ascale = &a.as_ref().s[a.range.clone().start / gs..a.range.clone().end / gs];
 
-        let bqvalue = &b.as_ref().q[b.range.clone()];
-        let bscale = &b.as_ref().s[b.range.clone().start / gs..b.range.clone().end / gs];
+        // Since we only slice by layers.
+        let aq = &a.as_ref()[a.range.clone()][0];
+        let bq = &b.as_ref()[b.range.clone()][0];
 
         o.iter_mut().enumerate().for_each(
             |(idx, o)| {
@@ -32,13 +31,28 @@ impl QuantDevice<Vec<f32>, QuantizedTensor> for CPU {
                 let mut v = 0f32;
 
                 for k in 0..width {
-                    let pre_scale = aqvalue[r * width + k] * bqvalue[k * o_cols + c];
-                    v += pre_scale as f32 * ascale[(r * width + k) / gs] * bscale [(k * o_cols + c) / gs];
+                    let pre_scale = aq.q[r * width + k] * bq.q[k * o_cols + c];
+                    v += pre_scale as f32 * aq.s[(r * width + k) / GS] * bq.s[(k * o_cols + c) / GS];
                 }
                 *o = v as f32;
             }
 
         );
+    }
+
+    fn quantize(&self, o: &mut MutView<'_, Vec<QuantizedTensor>>, a: &View<'_, Vec<f32>>, n: usize) {
+        let num_groups = n / GS;
+        let q_max = 127.0f32;
+        for group in 0..num_groups {
+            let mut wmax = 0.0f32;
+            for i in 0..GS {
+                let val = f32::abs(a.data[group * GS + i]);
+                if val > wmax {
+                    wmax = val;
+                }
+            }
+        }
+
     }
 }
 
@@ -46,11 +60,11 @@ impl QuantDevice<Vec<f32>, QuantizedTensor> for CPU {
 fn test_matmul() {
 
     // Test quantized matmul
-    let uqt = QuantizedTensor { q: vec![1, 2, 3, 4], s: vec![1.0, 1.0] };
+    let uqt = vec![QuantizedTensor { q: vec![1, 2, 3, 4], s: vec![1.0, 1.0] }];
     let uqt_view = View::new(&uqt);
     let uqt_view2 = View::new(&uqt);
 
-    let qt = QuantizedTensor { q: vec![1, 2, 3, 4], s: vec![0.5, 0.5] };
+    let qt = vec![QuantizedTensor { q: vec![1, 2, 3, 4], s: vec![0.5, 0.5] }];
     let qt_view = View::new(&qt);
     let qt_2 = qt.clone();
     let qt_view_2 = View::new(&qt_2);

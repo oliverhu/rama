@@ -10,9 +10,10 @@ pub struct QuantizedTensor {
     pub s: Vec<f32>, // scaling factor
 }
 
-impl Storage for QuantizedTensor {
+impl Storage for Vec<QuantizedTensor> {
     fn length(&self) -> usize {
-        self.q.len()
+        // TODO: I don't remember where the length is used now. Likely needs fixed.
+        self.len() * self[0].q.len()
     }
 }
 
@@ -36,45 +37,49 @@ fn read_q80_tensor(rd: &mut BufReader<File>, size_each: usize) -> QuantizedTenso
     qt
 }
 
+// Currently following the llama.c convention of mapping weights into data structure.
+// not sure why it is ncessary to segment weights by layers for this case. To be optimized later.
 fn read_q80_vec(rd: &mut BufReader<File>, n_layer: usize, size_each: usize) -> Vec<QuantizedTensor> {
     (0..n_layer).map(|_| read_q80_tensor(rd, size_each)).collect()
 }
 
-// impl TransformerWeights<Vec<f32>> {
-    // #[allow(dead_code)]
-    // pub fn from_file(f: &mut BufReader<File>, c: &Config) -> Self {
-    //     let head_size = c.dim / c.n_heads;
-    //     let mut tw = Self {
-    //         // q_token: read_q80_vec(f, 1, c.vocab_size * c.dim),
-    //         token_embedding_table: vec![0.0f32; c.vocab_size * c.dim],
-    //         rms_att_weight: read_vec(f, c.n_layers * c.dim),
-    //         wq: read_q80_vec(f, c.n_layers, c.dim * c.dim),
-    //         wk: read_q80_vec(f, c.n_layers, c.dim * c.dim),
-    //         wv: read_q80_vec(f, c.n_layers, c.dim * c.dim),
-    //         wo: read_q80_vec(f, c.n_layers, c.dim * c.dim),
-    //         rms_ffn_weight: read_vec(f, c.n_layers * c.dim),
-    //         w1: read_q80_vec(f, c.n_layers, c.dim * c.hidden_dim),
-    //         w2: read_q80_vec(f, c.n_layers, c.dim * c.hidden_dim),
-    //         w3: read_q80_vec(f, c.n_layers, c.dim * c.hidden_dim),
-    //         rms_final_weight: read_vec(f, c.dim),
-    //         freq_cis_real: read_vec(f, c.seq_len * head_size / 2),
-    //         freq_cis_imag: read_vec(f, c.seq_len * head_size / 2),
-    //         wcls_exists: !c.shared_weight,
-    //         wcls: vec![],
-    //     };
-    //     tw.dequantize();
-    //     if c.shared_weight { tw.wcls = tw.q_token.clone(); } else {
-    //         read_q80_vec(f, 1, c.vocab_size * c.dim);
-    //     }
-    //     tw
-    // }
+impl TransformerWeights<Vec<f32>, Vec<QuantizedTensor>> {
+    #[allow(dead_code)]
+    pub fn from_file(f: &mut BufReader<File>, c: &Config) -> Self {
+        let head_size = c.dim / c.n_heads;
+        let mut tw = Self {
+            token_embedding_table: vec![0.0f32; c.vocab_size * c.dim],
+            rms_att_weight: read_vec(f, c.n_layers * c.dim),
+            rms_ffn_weight: read_vec(f, c.n_layers * c.dim),
+            rms_final_weight: read_vec(f, c.dim),
+            q_token: vec![QuantizedTensor::default()],
+            wq: read_q80_vec(f, c.n_layers, c.dim * c.dim),
+            wk: read_q80_vec(f, c.n_layers, c.dim * c.dim),
+            wv: read_q80_vec(f, c.n_layers, c.dim * c.dim),
+            wo: read_q80_vec(f, c.n_layers, c.dim * c.dim),
 
-    // // dequantize the token_embedding_table
-    // fn dequantize(&mut self) {
-    //     for i in 0..self.q_token[0].q.len() {
-    //         self.token_embedding_table[i] = self.q_token[0].q[i] as f32 * self.q_token[0].s[i / 64];
-    //     }
+            w1: read_q80_vec(f, c.n_layers, c.dim * c.hidden_dim),
+            w2: read_q80_vec(f, c.n_layers, c.dim * c.hidden_dim),
+            w3: read_q80_vec(f, c.n_layers, c.dim * c.hidden_dim),
 
-    // }
+            freq_cis_real: read_vec(f, c.seq_len * head_size / 2),
+            freq_cis_imag: read_vec(f, c.seq_len * head_size / 2),
+            wcls_exists: !c.shared_weight,
+            wcls: vec![],
+        };
+        tw.dequantize();
+        if c.shared_weight { tw.wcls = tw.q_token.clone(); } else {
+            read_q80_vec(f, 1, c.vocab_size * c.dim);
+        }
+        tw
+    }
 
-// }
+    // dequantize the token_embedding_table
+    fn dequantize(&mut self) {
+        for i in 0..self.q_token[0].q.len() {
+            self.token_embedding_table[i] = self.q_token[0].q[i] as f32 * self.q_token[0].s[i / 64];
+        }
+
+    }
+
+}
