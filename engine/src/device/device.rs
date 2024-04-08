@@ -23,7 +23,7 @@ pub trait Device<T: Storage, Q: Storage> {
 
 // A quant device deals with QuantTensors. It takes quantized tensors as input and returns dequantized output
 // The only function that deals with quans stuff is matrix multiplication.
-pub trait QuantDevice<T: Storage, Q: Storage> {
+pub trait QuantDevice<T: Storage, Q: Storage>: Device<T, Q> {
     fn matmul_q(&self, o: &mut MutView<'_, T>, a: &View<'_, Q>, b: &View<'_, Q>, width: usize, o_rows: usize, o_cols: usize);
     fn quantize(&self, o: &mut MutView<'_, Q>, a: &View<'_, T>, n: usize);
 }

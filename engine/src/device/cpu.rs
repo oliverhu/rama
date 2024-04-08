@@ -89,7 +89,7 @@ fn test_matmul() {
     println!("{:?}", *qt_mut.data);
 }
 
-impl Device<Vec<f32>, Vec<f32>> for CPU {
+impl Device<Vec<f32>, Vec<QuantizedTensor>> for CPU {
 
     fn array_add(&self, target: &mut MutView<'_, Vec<f32>>, source: &View<'_, Vec<f32>>, _n: usize) {
         let s_range = source.range.clone();
@@ -98,7 +98,7 @@ impl Device<Vec<f32>, Vec<f32>> for CPU {
         .for_each(|(a, b)| *a += *b);
     }
 
-    fn multi_head_attention(&self, rsv: &mut RunStateView<'_, Vec<f32>, Vec<f32>>,
+    fn multi_head_attention(&self, rsv: &mut RunStateView<'_, Vec<f32>, Vec<QuantizedTensor>>,
                                 cfg: &Config,
                                 layer: usize,
                                 pos: usize,) {
@@ -229,7 +229,7 @@ impl Device<Vec<f32>, Vec<f32>> for CPU {
         );
     }
 
-    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, Vec<f32>, Vec<f32>>, temperature: f32, topp: f32) -> usize {
+    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, Vec<f32>, Vec<QuantizedTensor>>, temperature: f32, topp: f32) -> usize {
         let next;
 
         let lr = rsv.logits.range.clone();
@@ -255,7 +255,7 @@ impl Device<Vec<f32>, Vec<f32>> for CPU {
         next
     }
 
-    fn to_cpu(&self, _state: &RunStateView<Vec<f32>, Vec<f32>>, _cpu_state: &mut RunState<Vec<f32>, Vec<f32>>) {
+    fn to_cpu(&self, _state: &RunStateView<Vec<f32>, Vec<QuantizedTensor>>, _cpu_state: &mut RunState<Vec<f32>, Vec<f32>>) {
         // no need to do anything since it is already CPU.
     }
 }

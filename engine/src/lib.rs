@@ -102,7 +102,7 @@ impl EngineService {
         let device = GPU::new();
 
         #[allow(unused_mut)]
-        let mut weights = TransformerWeights::from_file(rd, &model_config);
+        let mut weights = TransformerWeights::<Vec<f32>, Vec<f32>>::from_file(rd, &model_config);
         #[cfg(feature="gpu")]
         let weights = TransformerWeights::from_weight(&mut weights, &device);
 
@@ -149,7 +149,7 @@ async fn handler() {
                     let step = es.eng_config.step;
                     let temperature = es.eng_config.temperature;
                     let topp = es.eng_config.topp;
-                    transformer::generate_stream::<Vec<f32>, Vec<f32>, CPU>(&es.model_config, &es.tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &es.device, cr.sender).await;
+                    // transformer::generate_stream::<Vec<f32>, Vec<QuantizedTensor>, CPU>(&es.model_config, &es.tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &es.device, cr.sender).await;
                 });
             },
             Err(_) => {

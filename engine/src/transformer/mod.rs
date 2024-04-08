@@ -9,7 +9,7 @@ use std::{convert::Infallible, fs::File, io::{self, BufReader}, ops::{Bound, Ran
 use async_channel::Sender;
 use axum::response::sse::Event;
 
-use crate::{device::device::Device, tokenizer::bpe::{decode, Tokenizer}, transformer::infer::forward, utils::read::*};
+use crate::{device::device::{Device, QuantDevice}, tokenizer::bpe::{decode, Tokenizer}, transformer::infer::{forward, forward_q}, utils::read::*};
 use std::io::{prelude::*, stdout};
 
 use self::state::{RunStateView, TransformerWeightsView};
@@ -171,14 +171,14 @@ impl Config {
     }
 }
 
-pub fn generate<'a, T: Storage, Q: Storage, D: Device<T, T>>(cfg: &Config,
+pub fn generate<'a, T: Storage, Q: Storage, D: QuantDevice<T, Q>>(cfg: &Config,
     tokenizer: &Tokenizer,
     prompt: String,
     temperature: f32,
     steps: usize,
     topp: f32,
-    wv: &TransformerWeightsView<'a, T, T>,
-    rsv: &mut RunStateView<'a, T, T>,
+    wv: &TransformerWeightsView<'a, T, Q>,
+    rsv: &mut RunStateView<'a, T, Q>,
     device: &D
 ) -> io::Result<String>
     {
@@ -190,7 +190,7 @@ pub fn generate<'a, T: Storage, Q: Storage, D: Device<T, T>>(cfg: &Config,
     let mut response = "".to_owned();
 
     while pos < steps {
-        forward::<T, Q, D>(cfg, wv, rsv, token, pos, device);
+        forward_q::<T, Q, D>(cfg, wv, rsv, token, pos, device);
 
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];

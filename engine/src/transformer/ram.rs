@@ -1,9 +1,9 @@
 use std::{fs::File, io::BufReader};
 
-use super::{read_vec, state::{RunState, TransformerWeights}, Config};
+use super::{ram_q80::QuantizedTensor, read_vec, state::{RunState, TransformerWeights}, Config};
 
 
-impl RunState<Vec<f32>, Vec<f32>> {
+impl RunState<Vec<f32>, Vec<QuantizedTensor>> {
     pub fn from_config(cfg: &Config) -> Self {
         let kv_dim = cfg.dim * cfg.n_kv_heads / cfg.n_heads;
         Self {
@@ -19,15 +19,15 @@ impl RunState<Vec<f32>, Vec<f32>> {
             logits: vec![0.0; cfg.vocab_size as usize],
             key_cache: vec![0.0; cfg.n_layers * cfg.seq_len * kv_dim as usize],
             value_cache: vec![0.0; cfg.n_layers * cfg.seq_len * kv_dim as usize],
-            xq: vec![0.0; cfg.dim as usize],
-            hq: vec![0.0; cfg.dim as usize],
+            xq: vec![QuantizedTensor::default(); cfg.dim as usize],
+            hq: vec![QuantizedTensor::default(); cfg.dim as usize],
         }
     }
 
 }
 
 impl TransformerWeights<Vec<f32>, Vec<f32>> {
-    pub fn from_file(f: &mut BufReader<File>, c: &Config) -> Self {
+    pub fn from_file(f: &mut BufReader<File>, c: &Config) -> TransformerWeights<Vec<f32>, Vec<f32>> {
         let head_size = c.dim / c.n_heads;
         Self {
             token_embedding_table: read_vec(f, c.vocab_size * c.dim),
