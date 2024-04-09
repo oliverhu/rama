@@ -19,8 +19,8 @@ impl RunState<Vec<f32>, Vec<QuantizedTensor>> {
             logits: vec![0.0; cfg.vocab_size as usize],
             key_cache: vec![0.0; cfg.n_layers * cfg.seq_len * kv_dim as usize],
             value_cache: vec![0.0; cfg.n_layers * cfg.seq_len * kv_dim as usize],
-            xq: vec![QuantizedTensor::default(); cfg.dim as usize],
-            hq: vec![QuantizedTensor::default(); cfg.dim as usize],
+            xq: vec![QuantizedTensor { q: vec![0; cfg.dim], s: vec![0.0; cfg.dim / 64] }; 1],
+            hq: vec![QuantizedTensor { q: vec![0; cfg.dim], s: vec![0.0; cfg.hidden_dim / 64] }; 1],
         }
     }
 

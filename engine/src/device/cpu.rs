@@ -11,7 +11,7 @@ use super::device::{Device, QuantDevice};
 #[derive(Debug)]
 pub struct CPU {}
 
-const GS: usize = 2;
+const GS: usize = 64;
 impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
     fn matmul_q(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<QuantizedTensor>>, b: &View<'_, Vec<QuantizedTensor>>, width: usize, o_rows: usize, o_cols: usize) {
         let or = o.range.clone();
@@ -39,7 +39,7 @@ impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
     }
 
     // Quantize function is only used for x -> xq and h -> hq, so we kinda only cares about
-    // one single layer, so we always get the first element out.
+    // one single "layer", so we always get the first element out.
     fn quantize(&self, o: &mut MutView<'_, Vec<QuantizedTensor>>, a: &View<'_, Vec<f32>>, n: usize) {
         let num_groups = n / GS;
         let q_max = 127.0f32;
@@ -53,6 +53,7 @@ impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
             }
             let scale = wmax / q_max;
             let qx = &mut o.data[0];
+            qx.s[group] = scale;
             let ax = a.data;
             for i in 0..GS {
                 let quant_value = ax[group * (GS as usize) + i] / scale;
@@ -60,8 +61,6 @@ impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
                 qx.q[group * GS + i] = quantized;
             }
         }
-
-
 
     }
 }
