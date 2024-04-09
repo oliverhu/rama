@@ -17,8 +17,6 @@ impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
         let or = o.range.clone();
         let o = &mut o.as_mut()[or];
 
-
-
         // Since we only slice by layers.
         let aq = &a.as_ref()[a.range.clone()][0];
         let bq = &b.as_ref()[b.range.clone()][0];
@@ -40,6 +38,8 @@ impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
         );
     }
 
+    // Quantize function is only used for x -> xq and h -> hq, so we kinda only cares about
+    // one single layer, so we always get the first element out.
     fn quantize(&self, o: &mut MutView<'_, Vec<QuantizedTensor>>, a: &View<'_, Vec<f32>>, n: usize) {
         let num_groups = n / GS;
         let q_max = 127.0f32;
@@ -51,7 +51,17 @@ impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
                     wmax = val;
                 }
             }
+            let scale = wmax / q_max;
+            let qx = &mut o.data[0];
+            let ax = a.data;
+            for i in 0..GS {
+                let quant_value = ax[group * (GS as usize) + i] / scale;
+                let quantized = quant_value.round() as i8;
+                qx.q[group * GS + i] = quantized;
+            }
         }
+
+
 
     }
 }

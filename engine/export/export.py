@@ -274,6 +274,7 @@ def version2_export(model, filepath, group_size=64):
     while model.params.dim % group_size != 0:
         group_size //= 2
         print(f"BACKOFF: reducing group size to {group_size} to fit hidden_dim")
+    # model.layers = model.layers[:1]
     weights = [
         model.tok_embeddings.weight,
         *[layer.attention.wq.weight for layer in model.layers],
@@ -579,7 +580,7 @@ def model_export(model, filepath, version, dtype=torch.float32):
     v2: int8 quantized Q8_0 export, similar to llama.cpp, in groups
     # TODO: add dtype export support for other versions (?)
     """
-    if version == 0:
+c.vocab_size * c.dim    if version == 0:
         legacy_export(model, filepath)
     elif version == 1:
         version1_export(model, filepath)
@@ -627,7 +628,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("filepath", type=str, help="the output filepath")
-    parser.add_argument("--version", default=80, type=int, help="the version to export with")
+    parser.add_argument("--version", default=2, type=int, help="the version to export with")
     parser.add_argument("--dtype", type=str, help="dtype of the model (fp16, fp32)", default="fp32")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--checkpoint", type=str, help="model checkpoint, .pt file")

@@ -66,7 +66,12 @@ fn main() {
     let topp = args.topp;
 
     let rd = &mut BufReader::new(File::open(path).unwrap());
+
     let config = Config::from_file(rd);
+
+    // Reset cursor at 256.
+    let rd = &mut BufReader::new(File::open(path).unwrap());
+    rd.seek_relative(256).unwrap();
 
     #[allow(unused_variables)]
     let device = CPU {};

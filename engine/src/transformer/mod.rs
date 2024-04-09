@@ -143,8 +143,16 @@ pub struct Config {
 
 impl Config {
     pub fn from_file(f: &mut BufReader<File>) -> Self {
-        let mut shared_weight = false;
-        let c  = Self {
+        let magic = read::<u32>(f);
+        println!("0x{:x}", magic);
+        io::stdout().flush().unwrap();
+
+        assert_eq!(magic, 1634415666);
+
+        let version = read::<u32>(f);
+        assert_eq!(version, 2);
+
+        let mut c  = Self {
 
             dim: read::<i32>(f) as usize,
             hidden_dim: read::<i32>(f) as usize,
@@ -154,7 +162,7 @@ impl Config {
             vocab_size: {
                 let vocab = read::<i32>(f);
                 if vocab > 0 {
-                    shared_weight = true;
+                    true;
                     vocab as usize
                 } else {
                     vocab.abs() as usize
@@ -164,8 +172,11 @@ impl Config {
             shared_weight: false,
             is_quantized: false,
         };
+        c.n_layers = 1;
+        let shared_weight = read_byte(f) != 0;
+        let _ = read::<i32>(f);
         Self {
-            shared_weight: shared_weight,
+            shared_weight,
             ..c
         }
     }

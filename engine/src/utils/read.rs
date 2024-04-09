@@ -28,6 +28,12 @@ pub(crate) fn read<T: FromBytes>(rd:&mut BufReader<File>) -> T {
     T::from_bytes(buffer)
 }
 
+pub(crate) fn read_byte(rd:&mut BufReader<File>) -> u8 {
+    let mut buffer = [0u8; 1];
+    rd.read_exact(&mut buffer).expect("error reading file");
+    u8::from_le_bytes(buffer)
+}
+
 pub fn read_vec<T: FromBytes>(rd: &mut BufReader<File>, size: usize) -> Vec<T> {
     (0..size).map(|_| read::<T>(rd)).collect()
 }
