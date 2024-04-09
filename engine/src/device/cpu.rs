@@ -29,7 +29,7 @@ impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
                 let mut v = 0f32;
 
                 for k in 0..width {
-                    let pre_scale = aq.q[r * width + k] * bq.q[k * o_cols + c];
+                    let pre_scale = aq.q[r * width + k] as i32 * bq.q[k * o_cols + c] as i32;
                     v += pre_scale as f32 * aq.s[(r * width + k) / GS] * bq.s[(k * o_cols + c) / GS];
                 }
                 *o = v as f32;

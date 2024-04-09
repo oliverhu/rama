@@ -66,12 +66,11 @@ pub fn forward_q<'a, T: Storage, Q: Storage, D: Device<T, Q> + QuantDevice<T, Q>
     for layer in 0..cfg.n_layers {
         device.rmsnorm(&mut rsv.xb, &rsv.x.as_view(), &wv.rms_att_weight.slice(layer * dim..), dim);
 
-        // TODO QUANTIZE
         device.quantize(&mut rsv.xq, &rsv.xb.as_view(), dim);
 
         device.matmul_q(&mut rsv.q, &wv.wq.slice(layer..layer + 1), &rsv.xq.as_view(), dim, dim, 1);
-        device.matmul_q(&mut rsv.k, &wv.wk.slice(layer * dim * dim..), &rsv.xq.as_view(), dim, dim, 1);
-        device.matmul_q(&mut rsv.v, &wv.wv.slice(layer * dim * dim..), &rsv.xq.as_view(), dim, dim, 1);
+        device.matmul_q(&mut rsv.k, &wv.wk.slice(layer..layer + 1), &rsv.xq.as_view(), dim, dim, 1);
+        device.matmul_q(&mut rsv.v, &wv.wv.slice(layer..layer + 1), &rsv.xq.as_view(), dim, dim, 1);
 
 
         for h in 0..cfg.n_heads {

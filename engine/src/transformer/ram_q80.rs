@@ -16,7 +16,7 @@ pub struct QuantizedTensor {
 impl Storage for Vec<QuantizedTensor> {
     fn length(&self) -> usize {
         // TODO: I don't remember where the length is used now. Likely needs fixed.
-        self.len() * self[0].q.len()
+        self.len()
     }
 }
 
