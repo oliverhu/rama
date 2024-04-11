@@ -23,8 +23,30 @@ impl RunState<Vec<f32>, Vec<QuantizedTensor>> {
             hq: vec![QuantizedTensor { q: vec![0; cfg.hidden_dim], s: vec![0.0; cfg.hidden_dim / 64] }; 1],
         }
     }
-
 }
+
+impl RunState<Vec<f32>, Vec<f32>> {
+    pub fn from_config(cfg: &Config) -> Self {
+        let kv_dim = cfg.dim * cfg.n_kv_heads / cfg.n_heads;
+        Self {
+            x: vec![0.0; cfg.dim as usize],
+            xb: vec![0.0; cfg.dim as usize],
+            xb2: vec![0.0; cfg.dim as usize],
+            hb: vec![0.0; cfg.hidden_dim as usize],
+            hb2: vec![0.0; cfg.hidden_dim as usize],
+            q: vec![0.0; cfg.dim as usize],
+            k: vec![0.0; cfg.dim as usize],
+            v: vec![0.0; cfg.dim as usize],
+            att: vec![0.0; cfg.n_heads * cfg.seq_len as usize],
+            logits: vec![0.0; cfg.vocab_size as usize],
+            key_cache: vec![0.0; cfg.n_layers * cfg.seq_len * kv_dim as usize],
+            value_cache: vec![0.0; cfg.n_layers * cfg.seq_len * kv_dim as usize],
+            xq: vec![1.0; 1],
+            hq: vec![1.0; 1],
+        }
+    }
+}
+
 
 impl TransformerWeights<Vec<f32>, Vec<f32>> {
     pub fn from_file(f: &mut BufReader<File>, c: &Config) -> TransformerWeights<Vec<f32>, Vec<f32>> {

@@ -94,7 +94,7 @@ impl EngineService {
         let token_path = eng_config.tokenizer.clone();
 
         let rd = &mut BufReader::new(File::open(path).unwrap());
-        let model_config = Config::from_file(rd);
+        let model_config = Config::from_file_v1(rd);
 
         #[allow(unused_variables)]
         let device: CPU = CPU {};
@@ -131,7 +131,7 @@ async fn handler() {
             Ok(cr) => {
                 // allocate RunState space.
                 tokio::spawn(async {
-                    let mut state = RunState::from_config(&es.model_config);
+                    let mut state = RunState::<Vec<f32>, Vec<f32>>::from_config(&es.model_config);
                     let prompt = cr.prompt;
                     println!("received prompt --> {}", prompt);
 

@@ -12,6 +12,16 @@ use super::device::{Device, QuantDevice};
 pub struct CPU {}
 
 const GS: usize = 64;
+
+impl QuantDevice<Vec<f32>, Vec<f32>> for CPU {
+    fn matmul_q(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<f32>>, b: &View<'_, Vec<f32>>, width: usize, o_rows: usize, o_cols: usize) {
+        // dummy
+    }
+
+    fn quantize(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<f32>>, n: usize) {
+        // dummy
+    }
+}
 impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
     fn matmul_q(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<QuantizedTensor>>, b: &View<'_, Vec<QuantizedTensor>>, width: usize, o_rows: usize, o_cols: usize) {
         let or = o.range.clone();
@@ -82,7 +92,7 @@ impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
     }
 }
 
-impl Device<Vec<f32>, Vec<QuantizedTensor>> for CPU {
+impl<Q: Storage> Device<Vec<f32>, Q> for CPU {
 
     fn array_add(&self, target: &mut MutView<'_, Vec<f32>>, source: &View<'_, Vec<f32>>, _n: usize) {
         let s_range = source.range.clone();
@@ -91,7 +101,7 @@ impl Device<Vec<f32>, Vec<QuantizedTensor>> for CPU {
         .for_each(|(a, b)| *a += *b);
     }
 
-    fn multi_head_attention(&self, rsv: &mut RunStateView<'_, Vec<f32>, Vec<QuantizedTensor>>,
+    fn multi_head_attention(&self, rsv: &mut RunStateView<'_, Vec<f32>, Q>,
                                 cfg: &Config,
                                 layer: usize,
                                 pos: usize,) {
@@ -252,7 +262,7 @@ impl Device<Vec<f32>, Vec<QuantizedTensor>> for CPU {
         );
     }
 
-    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, Vec<f32>, Vec<QuantizedTensor>>, temperature: f32, topp: f32) -> usize {
+    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, Vec<f32>, Q>, temperature: f32, topp: f32) -> usize {
         let next;
 
         let lr = rsv.logits.range.clone();
@@ -278,7 +288,7 @@ impl Device<Vec<f32>, Vec<QuantizedTensor>> for CPU {
         next
     }
 
-    fn to_cpu(&self, _state: &RunStateView<Vec<f32>, Vec<QuantizedTensor>>, _cpu_state: &mut RunState<Vec<f32>, Vec<f32>>) {
+    fn to_cpu(&self, _state: &RunStateView<Vec<f32>, Q>, _cpu_state: &mut RunState<Vec<f32>, Vec<f32>>) {
         // no need to do anything since it is already CPU.
     }
 }
