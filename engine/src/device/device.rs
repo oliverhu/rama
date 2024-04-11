@@ -9,6 +9,8 @@ pub trait Device<T: Storage, Q: Storage> {
     fn copy_from_slice(&self, target: &mut MutView<'_, T>, source: &View<'_, T>, n: usize);
     fn rmsnorm(&self, o: &mut MutView<'_, T>, x: &View<'_, T>,
                         weight: &View<'_, T>, n: usize);
+    fn apply_rope(&self, q: &mut MutView<'_, T>, k: &mut MutView<'_, T>,
+        pos: usize, dim: usize, kv_dim: usize, head_size: usize);
     fn apply_position(&self, q: &mut MutView<'_, T>, k: &mut MutView<'_, T>, pos_real: &View<'_, T>, pos_img: &View<'_, T>, head_size: usize);
     fn matmul(&self, o: &mut MutView<'_, T>, a: &View<'_, T>, b: &View<'_, T>, width: usize, o_rows: usize, o_cols: usize);
     fn softmax<'a>(&self, x: &mut MutView<'a, T>, n: usize);

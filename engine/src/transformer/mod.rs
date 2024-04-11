@@ -172,7 +172,9 @@ impl Config {
             shared_weight: false,
             is_quantized: false,
         };
-        c.n_layers = 1;
+
+
+        // c.n_layers = 1; // REMOVE
         let shared_weight = read_byte(f) != 0;
         let _ = read::<i32>(f);
         Self {

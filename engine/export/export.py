@@ -274,7 +274,9 @@ def version2_export(model, filepath, group_size=64):
     while model.params.dim % group_size != 0:
         group_size //= 2
         print(f"BACKOFF: reducing group size to {group_size} to fit hidden_dim")
-    # model.layers = model.layers[:1]
+
+    model.layers = model.layers[:3] # REMOVE
+
     weights = [
         model.tok_embeddings.weight,
         *[layer.attention.wq.weight for layer in model.layers],
@@ -300,6 +302,9 @@ def version2_export(model, filepath, group_size=64):
     out_file.write(struct.pack('i', version))
     # 3) write the params, which will be 7 ints
     p = model.params
+
+    p.n_layers = 3 # REMOVE
+
     hidden_dim = model.layers[0].feed_forward.w1.weight.shape[0]
     n_kv_heads = p.n_heads if p.n_kv_heads is None else p.n_kv_heads
     header = struct.pack('iiiiiii', p.dim, hidden_dim, p.n_layers, p.n_heads,
@@ -580,7 +585,7 @@ def model_export(model, filepath, version, dtype=torch.float32):
     v2: int8 quantized Q8_0 export, similar to llama.cpp, in groups
     # TODO: add dtype export support for other versions (?)
     """
-c.vocab_size * c.dim    if version == 0:
+    if version == 0:
         legacy_export(model, filepath)
     elif version == 1:
         version1_export(model, filepath)
