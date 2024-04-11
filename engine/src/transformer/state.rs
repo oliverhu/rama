@@ -105,7 +105,7 @@ pub struct TransformerWeightsView<'a, T: Storage, Q: Storage> {
 
 impl<'a, T: Storage, Q: Storage> TransformerWeightsView<'a, T, Q> {
     #[allow(dead_code)]
-    pub fn from_ws(ws: &'a TransformerWeights<T, Q>) -> TransformerWeightsView<'a, T, Q> {
+    pub fn from_ws_q(ws: &'a TransformerWeights<T, Q>) -> TransformerWeightsView<'a, T, Q> {
         TransformerWeightsView {
             token_embedding_table: View::new(&ws.token_embedding_table),
             rms_att_weight: View::new(&ws.rms_att_weight),
@@ -129,6 +129,34 @@ impl<'a, T: Storage, Q: Storage> TransformerWeightsView<'a, T, Q> {
             },
             wcls_exists: ws.wcls_exists,
             q_token: View::new(&ws.q_token),
+        }
+
+    }
+
+    pub fn from_ws(ws: &'a TransformerWeights<T, T>) -> TransformerWeightsView<'a, T, T> {
+        TransformerWeightsView {
+            token_embedding_table: View::new(&ws.token_embedding_table),
+            rms_att_weight: View::new(&ws.rms_att_weight),
+            rms_ffn_weight: View::new(&ws.rms_ffn_weight),
+            wq: View::new(&ws.wq),
+            wk: View::new(&ws.wk),
+            wv: View::new(&ws.wv),
+            wo: View::new(&ws.wo),
+            w1: View::new(&ws.w1),
+            w2: View::new(&ws.w2),
+            w3: View::new(&ws.w3),
+            rms_final_weight: View::new(&ws.rms_final_weight),
+            freq_cis_real: View::new(&ws.freq_cis_real),
+            freq_cis_imag: View::new(&ws.freq_cis_imag),
+            wcls: {
+                if ws.wcls_exists {
+                    View::new(&ws.wcls)
+                } else {
+                    View::new(&ws.token_embedding_table)
+                }
+            },
+            wcls_exists: ws.wcls_exists,
+            q_token: View::new(&ws.token_embedding_table),
         }
 
     }

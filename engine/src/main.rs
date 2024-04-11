@@ -95,7 +95,7 @@ fn main() {
         let mut state = RunState::from_state(&mut state, &device);
 
         #[cfg(not(feature="gpu"))]
-        let wv = TransformerWeightsView::from_ws(&weights);
+        let wv = TransformerWeightsView::from_ws_q(&weights);
         #[cfg(feature="gpu")]
         let wv = TransformerWeightsView::from_gpu_ws(&weights);
 
@@ -128,7 +128,7 @@ fn main() {
         let mut state = RunState::from_state(&mut state, &device);
 
         #[cfg(not(feature="gpu"))]
-        let wv = TransformerWeightsView::from_ws(&weights);
+        let wv = TransformerWeightsView::<Vec<f32>, Vec<f32>>::from_ws(&weights);
         #[cfg(feature="gpu")]
         let wv = TransformerWeightsView::from_gpu_ws(&weights);
 

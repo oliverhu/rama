@@ -136,7 +136,7 @@ async fn handler() {
                     println!("received prompt --> {}", prompt);
 
                     #[cfg(not(feature="gpu"))]
-                    let wv = TransformerWeightsView::from_ws(&es.weights);
+                    let wv = TransformerWeightsView::<Vec<f32>, Vec<f32>>::from_ws(&es.weights);
 
                     #[cfg(feature="gpu")]
                     let mut state = RunState::from_state(&mut state, &es.device);
