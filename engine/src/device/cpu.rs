@@ -14,16 +14,16 @@ pub struct CPU {}
 const GS: usize = 64;
 
 impl QuantDevice<Vec<f32>, Vec<f32>> for CPU {
-    fn matmul_q(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<f32>>, b: &View<'_, Vec<f32>>, width: usize, o_rows: usize, o_cols: usize) {
+    fn matmul_q(&self, _: &mut MutView<'_, Vec<f32>>, _: &View<'_, Vec<f32>>, _: &View<'_, Vec<f32>>, _: usize, _: usize, _: usize) {
         // dummy
     }
 
-    fn quantize(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<f32>>, n: usize) {
+    fn quantize(&self, _: &mut MutView<'_, Vec<f32>>, _: &View<'_, Vec<f32>>, _: usize) {
         // dummy
     }
 }
 impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
-    fn matmul_q(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<QuantizedTensor>>, b: &View<'_, Vec<QuantizedTensor>>, width: usize, o_rows: usize, o_cols: usize) {
+    fn matmul_q(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<QuantizedTensor>>, b: &View<'_, Vec<QuantizedTensor>>, width: usize, _: usize, o_cols: usize) {
         let or = o.range.clone();
         let o = &mut o.as_mut()[or];
 

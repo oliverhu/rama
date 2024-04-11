@@ -17,6 +17,12 @@ python export/export.py llama2_7b.bin --meta-llama path/to/llama/model/7B
 cargo run --release -- -m llama2_7b.bin -t tokenizer.bin -p 'once upon a time'
 ```
 
+pass `--q80` to enable quantization
+```
+python export.py llama2_7b_q80.bin --version 2 --meta-llama path/to/llama/model/7B
+cargo run --release --bin engine -- --model llama2_7b_q80.bin --tokenizer ./engine/tokenizer.bin --q80
+```
+
 pass `--features gpu` to use GPU for matrix multiplications
 ```
 cargo run --bin engine --features gpu --release -- -m llama2_7b.bin -t tokenizer.bin -p 'once upon a time'
@@ -75,6 +81,6 @@ Running llama2-7b f32 in M1 macbook is extremely slow since it requires 25GB mem
 - [x] Improve GPU performance to be at least slightly faster than CPU as baseline.
 - [x] Support CUBLAS for matmul.
 - [x] Support SIMD for CPU.
-- [ ] Support quantization.
+- [x] Support quantization.
 - [ ] Support flash attention.
 - [ ] Support AMD GPUs.

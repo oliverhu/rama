@@ -5,7 +5,7 @@ use crate::device::device::{Device, QuantDevice};
 
 use super::{state::{RunStateView, TransformerWeightsView}, Config, Storage};
 
-pub fn forward<'a, T: Storage, Q: Storage, D: Device<T, T>>(cfg: &Config, wv: &TransformerWeightsView<'a, T, T>, rsv: &mut RunStateView<'a, T, T>, token: usize, pos: usize,  device: &D) {
+pub fn forward<'a, T: Storage, Q: Storage, D: Device<T, Q>>(cfg: &Config, wv: &TransformerWeightsView<'a, T, T>, rsv: &mut RunStateView<'a, T, Q>, token: usize, pos: usize,  device: &D) {
     // let mut cpu_state = RunState::from_config(&cfg); // for debugging
     let dim: usize = cfg.dim;
     let hidden_dim = cfg.hidden_dim;

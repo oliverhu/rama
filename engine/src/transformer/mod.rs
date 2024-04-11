@@ -138,6 +138,7 @@ pub struct Config {
     pub vocab_size: usize,
     pub seq_len: usize,
     pub shared_weight: bool,
+    pub is_quantized: bool,
 }
 
 impl Config {
@@ -161,6 +162,7 @@ impl Config {
             },
             seq_len: read::<i32>(f) as usize,
             shared_weight: false,
+            is_quantized: false,
         };
         Self {
             shared_weight: shared_weight,
@@ -196,6 +198,7 @@ impl Config {
             },
             seq_len: read::<i32>(f) as usize,
             shared_weight: false,
+            is_quantized: true,
         };
 
         let shared_weight = read_byte(f) != 0;
@@ -208,6 +211,45 @@ impl Config {
 }
 
 pub fn generate<'a, T: Storage, Q: Storage, D: QuantDevice<T, Q>>(cfg: &Config,
+    tokenizer: &Tokenizer,
+    prompt: String,
+    temperature: f32,
+    steps: usize,
+    topp: f32,
+    wv: &TransformerWeightsView<'a, T, T>,
+    rsv: &mut RunStateView<'a, T, Q>,
+    device: &D
+) -> io::Result<String>
+    {
+    let prompt_tokens = if prompt.len() > 0 { tokenizer.encode(&prompt) } else { Vec::new() };
+
+    let mut token = 1;
+    let mut pos = 0;
+    let mut next;
+    let mut response = "".to_owned();
+
+    while pos < steps {
+        forward(cfg, wv, rsv, token, pos, device);
+
+        if pos < prompt_tokens.len() {
+            next = prompt_tokens[pos];
+        } else {
+            next = device.sample(cfg, rsv, temperature, topp);
+        }
+
+        let mut token_str = tokenizer.vocab[next].clone();
+        token_str = decode(token_str);
+        response += &token_str;
+        print!("{}", token_str);
+        stdout().flush()?;
+
+        token = next;
+        pos += 1;
+    };
+    Ok(response)
+}
+
+pub fn generate_q<'a, T: Storage, Q: Storage, D: QuantDevice<T, Q>>(cfg: &Config,
     tokenizer: &Tokenizer,
     prompt: String,
     temperature: f32,
@@ -266,7 +308,7 @@ pub async fn generate_stream<'a, T: Storage, Q: Storage, D: Device<T, T>>(cfg: &
     let mut response = "".to_owned();
 
     while pos < steps {
-        forward::<T, Q, D>(cfg, wv, rsv, token, pos, device);
+        forward(cfg, wv, rsv, token, pos, device);
 
         if pos < prompt_tokens.len() {
             next = prompt_tokens[pos];
