@@ -126,6 +126,7 @@ def legacy_export(model, filepath):
     out_file.close()
     print(f"wrote {filepath}")
 
+
 # -----------------------------------------------------------------------------
 # new version
 
@@ -193,6 +194,7 @@ def version2_export(model, filepath, group_size=64):
     while model.params.dim % group_size != 0:
         group_size //= 2
         print(f"BACKOFF: reducing group size to {group_size} to fit hidden_dim")
+
     weights = [
         model.tok_embeddings.weight,
         *[layer.attention.wq.weight for layer in model.layers],
@@ -218,6 +220,7 @@ def version2_export(model, filepath, group_size=64):
     out_file.write(struct.pack('i', version))
     # 3) write the params, which will be 7 ints
     p = model.params
+
     hidden_dim = model.layers[0].feed_forward.w1.weight.shape[0]
     n_kv_heads = p.n_heads if p.n_kv_heads is None else p.n_kv_heads
     header = struct.pack('iiiiiii', p.dim, hidden_dim, p.n_layers, p.n_heads,
@@ -269,7 +272,7 @@ def hf_export(llama_model, filepath, group_size=64, dtype=torch.float32):
         print("Please run `pip install transformers` to install it")
         return None
 
-    # Generate LlamaModel state_dict
+    # Generate LlamaModel state_dict
     hf_state_dict = {}
 
     # Sometimes we have repeated key values for the heads
@@ -342,7 +345,7 @@ def hf_export(llama_model, filepath, group_size=64, dtype=torch.float32):
 
 
     # Save files in directory filepath
-    # First make the directory if it doesn't exist
+    # First make the directory if it doesn't exist
     os.makedirs(filepath, exist_ok=True)
 
     # Save the state dictionary in .bin format, and config as .json

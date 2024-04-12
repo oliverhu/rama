@@ -2,16 +2,97 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
 
-use crate::transformer::{infer::sample_top_q, state::{RunState, RunStateView}, Config, MutView, View};
-
+use crate::transformer::{infer::sample_top_q, state::{RunState, RunStateView}, Config, MutView, Storage, View};
+use crate::transformer::ram_q80::QuantizedTensor;
 use wide::f32x4;
 
-use super::device::Device;
+use super::device::{Device, QuantDevice};
 
 #[derive(Debug)]
 pub struct CPU {}
 
-impl Device<Vec<f32>> for CPU {
+const GS: usize = 64;
+
+impl QuantDevice<Vec<f32>, Vec<f32>> for CPU {
+    fn matmul_q(&self, _: &mut MutView<'_, Vec<f32>>, _: &View<'_, Vec<f32>>, _: &View<'_, Vec<f32>>, _: usize, _: usize, _: usize) {
+        // dummy
+    }
+
+    fn quantize(&self, _: &mut MutView<'_, Vec<f32>>, _: &View<'_, Vec<f32>>, _: usize) {
+        // dummy
+    }
+}
+impl QuantDevice<Vec<f32>, Vec<QuantizedTensor>> for CPU {
+    fn matmul_q(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<QuantizedTensor>>, b: &View<'_, Vec<QuantizedTensor>>, width: usize, _: usize, o_cols: usize) {
+        let or = o.range.clone();
+        let o = &mut o.as_mut()[or];
+
+        // Since we only slice by layers.
+        let aq = &a.as_ref()[a.range.clone()][0];
+        let bq = &b.as_ref()[b.range.clone()][0];
+
+        // Non parallelized version for debugging purposes.
+        // for i in 0..o_rows {
+        //     let mut val = 0.0f32;
+        //     let mut ival = 0;
+        //     let inv = i * width;
+
+        //     for j in (0..width - GS + 1).step_by(GS) {
+        //         for k in 0..GS {
+        //             ival += bq.q[j + k] as i32 * aq.q[inv + j + k] as i32;
+        //         }
+        //         val += ival as f32 * aq.s[(inv + j) / GS] * bq.s[j / GS];
+        //         ival = 0;
+        //     }
+        //     o[i] = val;
+
+        // }
+
+        o.par_iter_mut().enumerate().for_each(
+            |(idx, o)| {
+                let r = idx / o_cols;
+                let c = idx % o_cols;
+                // Reset to the naive impl of matmul for easier debugging. Calculate the flattened position for value & scale.
+                let mut v = 0f32;
+
+                for k in 0..width {
+                    let pre_scale = aq.q[r * width + k] as i32 * bq.q[k * o_cols + c] as i32;
+                    v += pre_scale as f32 * aq.s[(r * width + k) / GS] * bq.s[(k * o_cols + c) / GS];
+                }
+                *o = v as f32;
+            }
+
+        );
+    }
+
+    // Quantize function is only used for x -> xq and h -> hq, so we kinda only cares about
+    // one single "layer", so we always get the first element out.
+    fn quantize(&self, o: &mut MutView<'_, Vec<QuantizedTensor>>, a: &View<'_, Vec<f32>>, n: usize) {
+        let num_groups = n / GS;
+        let q_max = 127.0f32;
+        for group in 0..num_groups {
+            let mut wmax = 0.0f32;
+            for i in 0..GS {
+                let val = f32::abs(a.data[group * GS + i]);
+                if val > wmax {
+                    wmax = val;
+                }
+            }
+            let scale = wmax / q_max;
+            let qx = &mut o.data[0];
+            qx.s[group] = scale;
+            let ax = a.data;
+            for i in 0..GS {
+                let quant_value = ax[group * (GS as usize) + i] / scale;
+                let quantized = quant_value.round() as i8;
+                qx.q[group * GS + i] = quantized;
+            }
+        }
+
+    }
+}
+
+impl<Q: Storage> Device<Vec<f32>, Q> for CPU {
 
     fn array_add(&self, target: &mut MutView<'_, Vec<f32>>, source: &View<'_, Vec<f32>>, _n: usize) {
         let s_range = source.range.clone();
@@ -20,19 +101,22 @@ impl Device<Vec<f32>> for CPU {
         .for_each(|(a, b)| *a += *b);
     }
 
-    fn multi_head_attention(&self, rsv: &mut RunStateView<'_, Vec<f32>>,
+    fn multi_head_attention(&self, rsv: &mut RunStateView<'_, Vec<f32>, Q>,
                                 cfg: &Config,
                                 layer: usize,
                                 pos: usize,) {
         let head_size = cfg.dim / cfg.n_heads;
-        let lo = layer * cfg.seq_len * cfg.dim;
+        let kv_mul = cfg.n_heads / cfg.n_kv_heads;
+        let kv_dim = (cfg.dim * cfg.n_kv_heads) / cfg.n_heads;
+        let lo = layer * cfg.seq_len * kv_dim;
         let mut atts: Vec<&mut [f32]> = rsv.att.as_mut().chunks_mut(cfg.seq_len).collect();
         let qs: Vec<&mut [f32]> = rsv.q.as_mut().chunks_mut(head_size).collect();
         let xbs: Vec<&mut [f32]> = rsv.xb.as_mut().chunks_mut(head_size).collect();
-        atts.par_iter_mut().zip(xbs).enumerate().for_each(|(h, (att,xb))| {
+
+        atts.iter_mut().zip(xbs).enumerate().for_each(|(h, (att,xb))| {
             let q = &qs[h];
             for t in 0..(pos + 1) {
-                let ko = lo + t * cfg.dim + h * head_size;
+                let ko = lo + t * kv_dim + (h / kv_mul) * head_size;
                 let bind = &rsv.key_cache.slice(ko..(ko + head_size));
                 let k = &bind.as_ref()[ko..(ko + head_size)];
                 att[t] = q.iter().zip(k.iter())
@@ -42,7 +126,7 @@ impl Device<Vec<f32>> for CPU {
             self.softmax_num(&mut att[..(pos + 1)], pos + 1);
             xb.fill(0.0);
             for t in 0..(pos + 1) {
-                let ko = lo + t * cfg.dim + h * head_size;
+                let ko = lo + t * kv_dim + (h / kv_mul) * head_size;
                 let v = rsv.value_cache.slice(ko..(ko + head_size));
                 let a = att[t];
                 xb.iter_mut().zip(&v.as_ref()[ko..(ko + head_size)]).for_each(|(xbi, &vi)| *xbi += a * vi);
@@ -69,6 +153,33 @@ impl Device<Vec<f32>> for CPU {
         target.as_mut()[t_range].copy_from_slice(
           &source.as_ref()[s_range]
         );
+    }
+
+    fn apply_rope(&self, q: &mut MutView<'_, Vec<f32>>, k: &mut MutView<'_, Vec<f32>>,
+    pos: usize, dim: usize, kv_dim: usize, head_size: usize) {
+        for i in (0..dim).step_by(2) {
+            let head_dim = i % head_size;
+            let freq = 1.0f32 / f32::powf(10000.0, head_dim as f32 / head_size as f32 );
+            let val = pos as f32 * freq;
+            let fcr = f32::cos(val);
+            let fci = f32::sin(val);
+            let rotn = if i < kv_dim { 2 } else { 1 };
+
+            for v in 0..rotn {
+                if v == 0 {
+                    let v0 = q.data[i];
+                    let v1 = q.data[i + 1];
+                    q.data[i]   = v0 * fcr - v1 * fci;
+                    q.data[i+1] = v0 * fci + v1 * fcr;
+                } else {
+                    let v0 = k.data[i];
+                    let v1 = k.data[i + 1];
+                    k.data[i]   = v0 * fcr - v1 * fci;
+                    k.data[i+1] = v0 * fci + v1 * fcr;
+                }
+            }
+
+        }
     }
 
     fn apply_position(&self, q: &mut MutView<'_, Vec<f32>>, k: &mut MutView<'_, Vec<f32>>, pos_real: &View<'_, Vec<f32>>, pos_img: &View<'_, Vec<f32>>, head_size: usize) {
@@ -146,13 +257,12 @@ impl Device<Vec<f32>> for CPU {
                     v += a_wide * b_wide;
                 }
                 *o = v.reduce_add();
-
             }
 
         );
     }
 
-    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, Vec<f32>>, temperature: f32, topp: f32) -> usize {
+    fn sample<'a>(&self, cfg: &Config, rsv: &mut RunStateView<'a, Vec<f32>, Q>, temperature: f32, topp: f32) -> usize {
         let next;
 
         let lr = rsv.logits.range.clone();
@@ -178,7 +288,7 @@ impl Device<Vec<f32>> for CPU {
         next
     }
 
-    fn to_cpu(&self, _state: &RunStateView<Vec<f32>>, _cpu_state: &mut RunState<Vec<f32>>) {
+    fn to_cpu(&self, _state: &RunStateView<Vec<f32>, Q>, _cpu_state: &mut RunState<Vec<f32>, Vec<f32>>) {
         // no need to do anything since it is already CPU.
     }
 }
@@ -190,4 +300,38 @@ impl CPU {
         let sum = x.par_iter().sum::<f32>();
         x.par_iter_mut().for_each(|a| *a /= sum);
     }
+}
+
+
+#[test]
+fn test_matmul() {
+
+    // Test quantized matmul
+    let uqt = vec![QuantizedTensor { q: vec![1, 2, 3, 4], s: vec![1.0, 1.0] }];
+    let uqt_view = View::new(&uqt);
+    let uqt_view2 = View::new(&uqt);
+
+    let qt = vec![QuantizedTensor { q: vec![1, 2, 3, 4], s: vec![0.5, 0.5] }];
+    let qt_view = View::new(&qt);
+    let qt_2 = qt.clone();
+    let qt_view_2 = View::new(&qt_2);
+
+    let mut result = vec![1.0f32, 2.0f32, 3.0, 4.0];
+    let mut qt_mut = MutView::new(&mut result);
+
+    let cpu = CPU {};
+    cpu.matmul_q(&mut qt_mut, &qt_view, &qt_view_2, 2, 2, 2);
+
+    assert_eq!(*qt_mut.data, vec![1.75f32, 2.5, 3.75, 5.5]);
+
+    cpu.matmul_q(&mut qt_mut, &uqt_view, &uqt_view2, 2, 2, 2);
+    assert_eq!(*qt_mut.data, vec![7.0f32, 10.0, 15.0, 22.0]);
+
+    // Test normal matmul, put them together right now for the same of comparing.
+    let qt = vec![1.0f32, 2.0, 3.0, 4.0];
+    let qt_view = View::new(&qt);
+    let qt_2 = vec![1.0f32, 2.0, 3.0, 4.0];
+    let qt2_view = View::new(&qt_2);
+    cpu.matmul_test(&mut qt_mut, &qt_view, &qt2_view, 2, 2, 2);
+    println!("{:?}", *qt_mut.data);
 }

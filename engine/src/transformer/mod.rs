@@ -1,6 +1,7 @@
 #[cfg(feature = "gpu")]
 pub mod hbm;
 pub mod ram;
+pub mod ram_q80;
 pub mod state;
 pub mod infer;
 
@@ -8,16 +9,18 @@ use std::{convert::Infallible, fs::File, io::{self, BufReader}, ops::{Bound, Ran
 use async_channel::Sender;
 use axum::response::sse::Event;
 
-use crate::{device::device::Device, tokenizer::bpe::{decode, Tokenizer}, transformer::infer::forward, utils::read::*};
+use crate::{device::device::{Device, QuantDevice}, tokenizer::bpe::{decode, Tokenizer}, transformer::infer::{forward, forward_q}, utils::read::*};
 use std::io::{prelude::*, stdout};
 
 use self::state::{RunStateView, TransformerWeightsView};
 
+#[derive(Debug)]
 pub struct View<'a, T: Storage> {
     pub data: &'a T,
     pub range: Range<usize>,
 }
 
+#[derive(Debug)]
 pub struct MutView<'a, MT> where MT: Storage {
     pub data: &'a mut MT,
     pub range: Range<usize>,
@@ -135,10 +138,11 @@ pub struct Config {
     pub vocab_size: usize,
     pub seq_len: usize,
     pub shared_weight: bool,
+    pub is_quantized: bool,
 }
 
 impl Config {
-    pub fn from_file(f: &mut BufReader<File>) -> Self {
+    pub fn from_file_v1(f: &mut BufReader<File>) -> Self {
         let mut shared_weight = false;
         let c  = Self {
 
@@ -158,22 +162,62 @@ impl Config {
             },
             seq_len: read::<i32>(f) as usize,
             shared_weight: false,
+            is_quantized: false,
         };
         Self {
             shared_weight: shared_weight,
             ..c
         }
+
+    }
+
+    pub fn from_file_v2(f: &mut BufReader<File>) -> Self {
+        let magic = read::<u32>(f);
+        io::stdout().flush().unwrap();
+
+        assert_eq!(magic, 1634415666);
+
+        let version = read::<u32>(f);
+        assert_eq!(version, 2);
+
+        let c  = Self {
+
+            dim: read::<i32>(f) as usize,
+            hidden_dim: read::<i32>(f) as usize,
+            n_layers: read::<i32>(f) as usize,
+            n_heads: read::<i32>(f) as usize,
+            n_kv_heads: read::<i32>(f) as usize,
+            vocab_size: {
+                let vocab = read::<i32>(f);
+                if vocab > 0 {
+                    true;
+                    vocab as usize
+                } else {
+                    vocab.abs() as usize
+                }
+            },
+            seq_len: read::<i32>(f) as usize,
+            shared_weight: false,
+            is_quantized: true,
+        };
+
+        let shared_weight = read_byte(f) != 0;
+        let _ = read::<i32>(f);
+        Self {
+            shared_weight,
+            ..c
+        }
     }
 }
 
-pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
+pub fn generate<'a, T: Storage, Q: Storage, D: QuantDevice<T, Q>>(cfg: &Config,
     tokenizer: &Tokenizer,
     prompt: String,
     temperature: f32,
     steps: usize,
     topp: f32,
-    wv: &TransformerWeightsView<'a, T>,
-    rsv: &mut RunStateView<'a, T>,
+    wv: &TransformerWeightsView<'a, T, T>,
+    rsv: &mut RunStateView<'a, T, Q>,
     device: &D
 ) -> io::Result<String>
     {
@@ -205,15 +249,54 @@ pub fn generate<'a, T: Storage, D: Device<T>>(cfg: &Config,
     Ok(response)
 }
 
-#[allow(dead_code)]
-pub async fn generate_stream<'a, T: Storage, D: Device<T>>(cfg: &Config,
+pub fn generate_q<'a, T: Storage, Q: Storage, D: QuantDevice<T, Q>>(cfg: &Config,
     tokenizer: &Tokenizer,
     prompt: String,
     temperature: f32,
     steps: usize,
     topp: f32,
-    wv: &TransformerWeightsView<'a, T>,
-    rsv: &mut RunStateView<'a, T>,
+    wv: &TransformerWeightsView<'a, T, Q>,
+    rsv: &mut RunStateView<'a, T, Q>,
+    device: &D
+) -> io::Result<String>
+    {
+    let prompt_tokens = if prompt.len() > 0 { tokenizer.encode(&prompt) } else { Vec::new() };
+
+    let mut token = 1;
+    let mut pos = 0;
+    let mut next;
+    let mut response = "".to_owned();
+
+    while pos < steps {
+        forward_q::<T, Q, D>(cfg, wv, rsv, token, pos, device);
+
+        if pos < prompt_tokens.len() {
+            next = prompt_tokens[pos];
+        } else {
+            next = device.sample(cfg, rsv, temperature, topp);
+        }
+
+        let mut token_str = tokenizer.vocab[next].clone();
+        token_str = decode(token_str);
+        response += &token_str;
+        print!("{}", token_str);
+        stdout().flush()?;
+
+        token = next;
+        pos += 1;
+    };
+    Ok(response)
+}
+
+#[allow(dead_code)]
+pub async fn generate_stream<'a, T: Storage, Q: Storage, D: Device<T, T>>(cfg: &Config,
+    tokenizer: &Tokenizer,
+    prompt: String,
+    temperature: f32,
+    steps: usize,
+    topp: f32,
+    wv: &TransformerWeightsView<'a, T, T>,
+    rsv: &mut RunStateView<'a, T, T>,
     device: &D,
     sender: Sender<Result<Event, Infallible>>
 ) {

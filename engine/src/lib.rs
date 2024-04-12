@@ -63,7 +63,7 @@ pub struct EngineService {
 
     // Weights of the model in CPU memory.
     #[cfg(not(feature="gpu"))]
-    weights: TransformerWeights<Vec<f32>>,
+    weights: TransformerWeights<Vec<f32>, Vec<f32>>,
     #[cfg(feature="gpu")]
     weights: TransformerWeights<CudaSlice<f32>>,
 
@@ -94,7 +94,7 @@ impl EngineService {
         let token_path = eng_config.tokenizer.clone();
 
         let rd = &mut BufReader::new(File::open(path).unwrap());
-        let model_config = Config::from_file(rd);
+        let model_config = Config::from_file_v1(rd);
 
         #[allow(unused_variables)]
         let device: CPU = CPU {};
@@ -102,7 +102,7 @@ impl EngineService {
         let device = GPU::new();
 
         #[allow(unused_mut)]
-        let mut weights = TransformerWeights::from_file(rd, &model_config);
+        let mut weights = TransformerWeights::<Vec<f32>, Vec<f32>>::from_file(rd, &model_config);
         #[cfg(feature="gpu")]
         let weights = TransformerWeights::from_weight(&mut weights, &device);
 
@@ -131,12 +131,12 @@ async fn handler() {
             Ok(cr) => {
                 // allocate RunState space.
                 tokio::spawn(async {
-                    let mut state = RunState::from_config(&es.model_config);
+                    let mut state = RunState::<Vec<f32>, Vec<f32>>::from_config(&es.model_config);
                     let prompt = cr.prompt;
                     println!("received prompt --> {}", prompt);
 
                     #[cfg(not(feature="gpu"))]
-                    let wv = TransformerWeightsView::from_ws(&es.weights);
+                    let wv = TransformerWeightsView::<Vec<f32>, Vec<f32>>::from_ws(&es.weights);
 
                     #[cfg(feature="gpu")]
                     let mut state = RunState::from_state(&mut state, &es.device);
@@ -149,7 +149,7 @@ async fn handler() {
                     let step = es.eng_config.step;
                     let temperature = es.eng_config.temperature;
                     let topp = es.eng_config.topp;
-                    transformer::generate_stream(&es.model_config, &es.tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &es.device, cr.sender).await;
+                    // transformer::generate_stream::<Vec<f32>, Vec<QuantizedTensor>, CPU>(&es.model_config, &es.tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &es.device, cr.sender).await;
                 });
             },
             Err(_) => {

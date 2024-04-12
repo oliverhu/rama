@@ -1,6 +1,7 @@
 use clap::Parser;
 use device::cpu::CPU;
 
+use transformer::ram_q80::QuantizedTensor;
 use tokenizer::bpe::Tokenizer;
 #[cfg(feature="gpu")]
 use device::gpu::GPU;
@@ -47,6 +48,10 @@ struct Args {
     /// (optional) Mode: generate or chat.
     #[arg(short('o'), long, default_value = "generate")]
     mode: String,
+
+    /// (optional) Mode: generate or chat.
+    #[arg(short('q'), long, default_value_t = false)]
+    q80: bool,
 }
 
 // Options:
@@ -56,6 +61,7 @@ struct Args {
 //   -s, --step <STEP>                Number of steps to run [default: 1]
 //   -r, --temperature <TEMPERATURE>  Path to the model checkpoint file [default: 0.9]
 //   -h, --help                       Print help
+//   -q, --q80                        whether checkpoint is quantized.
 //   -V, --version                    Print version
 
 fn main() {
@@ -63,44 +69,85 @@ fn main() {
     let path = &args.model;
     let token_path = &args.tokenizer;
     let topp = args.topp;
-
-    let rd = &mut BufReader::new(File::open(path).unwrap());
-    let config = Config::from_file(rd);
+    let quantized = args.q80;
 
     #[allow(unused_variables)]
     let device = CPU {};
     #[cfg(feature="gpu")]
     let device = GPU::new();
 
-    #[allow(unused_mut)]
-    let mut weights = TransformerWeights::from_file(rd, &config);
-    #[cfg(feature="gpu")]
-    let weights = TransformerWeights::from_weight(&mut weights, &device);
-    let mut state = RunState::from_config(&config);
+    // Branch based on wether the model is quantized. Currently we take the input from the arg, technically we can directly get this from the model itself.
+    if quantized {
+        let rd = &mut BufReader::new(File::open(path).unwrap());
 
-    #[cfg(feature="gpu")]
-    let mut state = RunState::from_state(&mut state, &device);
+        let config = Config::from_file_v2(rd);
 
-    #[cfg(not(feature="gpu"))]
-    let wv = TransformerWeightsView::from_ws(&weights);
-    #[cfg(feature="gpu")]
-    let wv = TransformerWeightsView::from_gpu_ws(&weights);
+        // Reset cursor at 256.
+        let rd = &mut BufReader::new(File::open(path).unwrap());
+        rd.seek_relative(256).unwrap();
+        #[allow(unused_mut)]
+        let mut weights = TransformerWeights::<Vec<f32>, Vec<QuantizedTensor>>::from_file(rd, &config);
+        #[cfg(feature="gpu")]
+        let weights = TransformerWeights::from_weight(&mut weights, &device);
+        let mut state = RunState::<Vec<f32>, Vec<QuantizedTensor>>::from_config(&config);
 
-    let mut rsv = RunStateView::from_rs(&mut state);
+        #[cfg(feature="gpu")]
+        let mut state = RunState::from_state(&mut state, &device);
 
-    let step = args.step;
-    let prompt = args.prompt;
-    let temperature = args.temperature;
-    let tokenizer = Tokenizer::new(token_path, config.vocab_size).unwrap();
+        #[cfg(not(feature="gpu"))]
+        let wv = TransformerWeightsView::from_ws_q(&weights);
+        #[cfg(feature="gpu")]
+        let wv = TransformerWeightsView::from_gpu_ws(&weights);
 
-    let start: SystemTime = SystemTime::now();
+        let mut rsv = RunStateView::from_rs(&mut state);
 
-    let _ = transformer::generate(&config, &tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &device);
-    let elapsed = start.elapsed().unwrap();
-    println!("\n--------------------------------");
-    println!("elapsed: {}.{:03} s, avg tok/s: {}",
-            elapsed.as_secs(), elapsed.subsec_millis(),
-            (step - 1) as f32 / elapsed.as_secs_f32());
+        let step = args.step;
+        let prompt = args.prompt;
+        let temperature = args.temperature;
+        let tokenizer = Tokenizer::new(token_path, config.vocab_size).unwrap();
+
+        let start: SystemTime = SystemTime::now();
+
+        let _ = transformer::generate_q::<Vec<f32>, Vec<QuantizedTensor>, CPU>(&config, &tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &device);
+        let elapsed = start.elapsed().unwrap();
+        println!("\n--------------------------------");
+        println!("elapsed: {}.{:03} s, avg tok/s: {}",
+                elapsed.as_secs(), elapsed.subsec_millis(),
+                (step - 1) as f32 / elapsed.as_secs_f32());
+    } else {
+        let rd = &mut BufReader::new(File::open(path).unwrap());
+
+        let config = Config::from_file_v1(rd);
+        #[allow(unused_mut)]
+        let mut weights = TransformerWeights::<Vec<f32>, Vec<f32>>::from_file(rd, &config);
+        #[cfg(feature="gpu")]
+        let weights = TransformerWeights::from_weight(&mut weights, &device);
+        let mut state = RunState::<Vec<f32>, Vec<f32>>::from_config(&config);
+
+        #[cfg(feature="gpu")]
+        let mut state = RunState::from_state(&mut state, &device);
+
+        #[cfg(not(feature="gpu"))]
+        let wv = TransformerWeightsView::<Vec<f32>, Vec<f32>>::from_ws(&weights);
+        #[cfg(feature="gpu")]
+        let wv = TransformerWeightsView::from_gpu_ws(&weights);
+
+        let mut rsv = RunStateView::from_rs(&mut state);
+
+        let step = args.step;
+        let prompt = args.prompt;
+        let temperature = args.temperature;
+        let tokenizer = Tokenizer::new(token_path, config.vocab_size).unwrap();
+
+        let start: SystemTime = SystemTime::now();
+
+        let _ = transformer::generate::<Vec<f32>, Vec<f32>, CPU>(&config, &tokenizer, prompt, temperature, step.into(), topp, &wv, &mut rsv, &device);
+        let elapsed = start.elapsed().unwrap();
+        println!("\n--------------------------------");
+        println!("elapsed: {}.{:03} s, avg tok/s: {}",
+                elapsed.as_secs(), elapsed.subsec_millis(),
+                (step - 1) as f32 / elapsed.as_secs_f32());
+    }
 
 }
 
