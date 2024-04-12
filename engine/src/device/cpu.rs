@@ -300,31 +300,6 @@ impl CPU {
         let sum = x.par_iter().sum::<f32>();
         x.par_iter_mut().for_each(|a| *a /= sum);
     }
-
-    #[allow(dead_code)]
-    fn matmul_test(&self, o: &mut MutView<'_, Vec<f32>>, a: &View<'_, Vec<f32>>, b: &View<'_, Vec<f32>>, width: usize, _o_rows: usize, o_cols: usize)
-    {
-        let or = o.range.clone();
-        let o = &mut o.as_mut()[or];
-
-        let ar = a.range.clone();
-        let a = &a.as_ref()[ar];
-
-        let br = b.range.clone();
-        let b = &b.as_ref()[br];
-        o.par_iter_mut().enumerate().for_each(
-            |(idx, o)| {
-                let r = idx / o_cols;
-                let c = idx % o_cols;
-                let mut v = 0.0;
-                for k in 0..width {
-                    v += a[r * width + k] * b[k * o_cols + c];
-                }
-                *o = v;
-            }
-
-        );
-    }
 }
 
 
